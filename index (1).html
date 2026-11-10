@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Машинен парк</title>
+<meta name="theme-color" content="#16202a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Машинен парк">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+:root{
+  --bg:#eceff2; --surface:#ffffff; --ink:#16202a; --muted:#5a6672; --line:#d3d9df;
+  --accent:#e5a00d; --accent-ink:#1d1500; --accent-soft:#fbefd2;
+  --ok:#1d7f47; --ok-soft:#dcf1e4; --warn:#b86a00; --warn-soft:#fbe9cf; --bad:#c22b2b; --bad-soft:#f8dddd;
+  --f-display:"Oswald","Arial Narrow",sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10151a; --surface:#1a2128; --ink:#e5e9ed; --muted:#93a0ac; --line:#2b343d;
+  --accent:#f0b429; --accent-ink:#1d1500; --accent-soft:#3a2f12;
+  --ok:#43c07a; --ok-soft:#173726; --warn:#eaa443; --warn-soft:#3b2b12; --bad:#f0625f; --bad-soft:#3d1c1c; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.45;padding-bottom:env(safe-area-inset-bottom,0px)}
+img{max-width:100%}
+[hidden]{display:none!important}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 110px;max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;letter-spacing:.01em;margin:0;text-wrap:balance}
+h2{font-size:1.35rem}
+h3{font-size:1.05rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:.875rem}
+.top{position:sticky;top:0;z-index:5;background:var(--ink);color:var(--bg);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:max(10px,env(safe-area-inset-top,0px));padding-bottom:10px}
+.top-in{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.brand{font-family:var(--f-display);font-size:1.2rem;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.brand i{display:inline-block;width:12px;height:12px;background:var(--accent);transform:rotate(45deg)}
+.who{margin-left:auto;text-align:right;font-size:.8rem;line-height:1.2;min-width:0}
+.who b{display:block;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top button{background:transparent;color:var(--bg);border:1px solid color-mix(in srgb,var(--bg) 35%,transparent);border-radius:8px;padding:8px 10px;font:inherit;font-size:.85rem;cursor:pointer;display:flex;align-items:center}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;text-align:left;width:100%;font:inherit;color:inherit;cursor:pointer;flex-wrap:wrap}
+.row:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row .main{flex:1;min-width:0}
+.row .t{font-weight:600}
+.row .s{font-size:.85rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num{font-family:var(--f-mono);font-weight:700;font-size:1rem;background:var(--accent-soft);color:var(--ink);padding:4px 8px;border-radius:6px;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:.75rem;font-weight:600;padding:3px 8px;border-radius:999px;white-space:nowrap;letter-spacing:.02em}
+.c-bad{background:var(--bad-soft);color:var(--bad)} .c-warn{background:var(--warn-soft);color:var(--warn)} .c-ok{background:var(--ok-soft);color:var(--ok)} .c-n{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.stack{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+label{font-size:.85rem;font-weight:600;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+input,select,textarea{font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;width:100%}
+textarea{min-height:96px;resize:vertical}
+.big-in{font-family:var(--f-mono);font-size:1.6rem;font-weight:700;letter-spacing:.02em}
+.btn{font:inherit;font-weight:600;font-size:1rem;min-height:52px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:12px 16px;cursor:pointer;width:100%}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.sm{min-height:40px;font-size:.9rem;padding:8px 12px;width:auto}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns .btn{flex:1 1 140px}
+.seg{display:flex;flex-direction:column;gap:6px}
+.seg label{flex-direction:row;align-items:center;gap:10px;font-size:1rem;color:var(--ink);font-weight:500;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
+.seg input{width:auto;margin:0;accent-color:var(--accent)}
+.err{color:var(--bad);font-weight:600;font-size:.9rem}
+.err:empty{display:none}
+.mhead{display:flex;flex-direction:column;gap:6px}
+.mnum{font-family:var(--f-mono);font-size:2rem;font-weight:700;line-height:1}
+.meter{display:flex;align-items:baseline;gap:8px;background:var(--ink);color:var(--bg);border-radius:10px;padding:12px 14px}
+.meter .v{font-family:var(--f-mono);font-size:1.8rem;font-weight:700;font-variant-numeric:tabular-nums}
+.meter .u{font-size:.9rem;opacity:.8}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.95rem;margin:0}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0}
+.ev{border-left:3px solid var(--line);padding:2px 0 2px 12px;display:flex;flex-direction:column;gap:4px}
+.ev.bad{border-color:var(--bad)} .ev.warn{border-color:var(--warn)} .ev.ok{border-color:var(--ok)}
+.ev .h{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.85rem;color:var(--muted)}
+.photo{max-width:100%;border-radius:8px;border:1px solid var(--line);max-height:260px;object-fit:cover;display:block}
+details.grp{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+details.grp summary{list-style:none;padding:14px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;font-family:var(--f-display);font-size:1.1rem}
+details.grp summary::-webkit-details-marker{display:none}
+details.grp summary .cnt{margin-left:auto;font-family:var(--f-mono);font-size:.85rem;color:var(--muted)}
+details.grp .list{padding:0 10px 10px}
+details.grp .row{border-color:transparent;background:var(--bg)}
+.shift{background:var(--ink);color:var(--bg);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.shift .lbl{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;opacity:.75}
+.shift .mnum{color:var(--accent)}
+.login{min-height:100vh;display:flex;flex-direction:column}
+.login .hero{background:var(--ink);color:var(--bg);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:max(32px,env(safe-area-inset-top,0px));padding-bottom:24px}
+.login .hero-in{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+.login h1{font-size:2.2rem;text-transform:uppercase;letter-spacing:.03em}
+.stripe{height:10px;background:repeating-linear-gradient(-45deg,var(--accent) 0 14px,var(--ink) 14px 28px)}
+.login .wrap{max-width:480px}
+.dots{display:flex;gap:14px;justify-content:center;padding:8px 0}
+.dots span{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink)}
+.dots span.on{background:var(--ink)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pad button{font-family:var(--f-mono);font-size:1.6rem;font-weight:700;min-height:64px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.pad button.fn{font-family:var(--f-body);font-size:.95rem;font-weight:600;color:var(--muted)}
+.combo{position:relative}
+.combo input{padding-right:56px;font-size:1.1rem;min-height:56px}
+.combo-btn{position:absolute;top:0;right:0;height:56px;width:52px;background:none;border:0;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.drop{margin-top:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;max-height:320px;overflow-y:auto;box-shadow:0 8px 24px rgb(0 0 0 / .12)}
+.opt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 14px;font:inherit;color:inherit;cursor:pointer;min-height:56px}
+.opt:last-child{border-bottom:0}
+.opt .t{font-weight:600;font-size:1.05rem}.opt .s{font-size:.8rem;color:var(--muted)}
+.opt:active,.opt:hover{background:var(--accent-soft)}
+.demo{background:var(--accent-soft);border-radius:10px;padding:12px 14px;font-size:.875rem}
+.nav{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px));padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
+.nav-in{max-width:680px;margin:0 auto;display:flex}
+.nav button{flex:1;background:none;border:0;font:inherit;font-size:.8rem;font-weight:600;color:var(--muted);padding:10px 4px 12px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;position:relative}
+.nav button.on{color:var(--ink)}
+.nav button.on::before{content:"";position:absolute;top:0;left:25%;right:25%;height:3px;background:var(--accent);border-radius:0 0 3px 3px}
+.nav svg{width:24px;height:24px}
+.nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--bad);color:#fff;font-size:.7rem;border-radius:999px;padding:1px 6px;font-family:var(--f-mono)}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:10px;font-weight:600;z-index:20;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgb(0 0 0 / .25)}
+.back{background:none;border:0;font:inherit;font-weight:600;color:var(--muted);padding:4px 0;cursor:pointer;align-self:flex-start}
+.empty{color:var(--muted);font-size:.95rem;padding:4px 0}
+.center{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center}
+/* loading bar */
+#busy{position:fixed;top:0;left:0;right:0;height:4px;z-index:30;overflow:hidden;background:color-mix(in srgb,var(--accent) 25%,transparent)}
+#busy::after{content:"";position:absolute;inset:0 auto 0 0;width:40%;background:var(--accent);animation:bar 1s ease-in-out infinite}
+@keyframes bar{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+body.busy .btn,body.busy .pad button,body.busy .row{opacity:.6;pointer-events:none}
+.spin{width:36px;height:36px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--accent);animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:no-preference){.row,.btn,.pad button{transition:transform .08s}.row:active,.btn:active,.pad button:active{transform:scale(.98)}}
+
+/* iPhone: рамката на Google не бива да става по-широка от екрана */
+html,body{width:100%;max-width:100%;overflow-x:hidden}
+body{overflow-wrap:anywhere;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+#app,.wrap,.top-in,.card,.list,.btns,.login,.hero-in{min-width:0;max-width:100%}
+.wrap{width:100%}
+input,select,textarea{min-width:0;max-width:100%}
+.pad{grid-template-columns:repeat(3,minmax(0,1fr))}
+.btns .btn{min-width:0}
+.row,.mcard,.kv dd,.ev{min-width:0}
+.num,.chip{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+#busy{contain:paint}
+.top button,.btn,.pad button,.nav button{overflow-wrap:normal}
+.top button{flex-shrink:0;white-space:nowrap}
+.brand{flex-shrink:0}
+.who{flex:1 1 auto}
+@media (max-width:374px){.top .bt{display:none}.top-in{gap:6px}.top button{padding:7px 8px}}
+.alert{background:var(--bad-soft);color:var(--bad);border-radius:10px;padding:12px 14px;font-weight:600}
+.okbox{background:var(--ok-soft);color:var(--ok);border-radius:10px;padding:14px;font-weight:600}
+.mcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.mcard .mnum{font-size:1.6rem}
+.numin{font-family:var(--f-mono);font-size:2rem;font-weight:700;letter-spacing:.12em;text-align:center}
+.sumline{display:flex;flex-wrap:wrap;gap:6px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.sh{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
+.sh:last-child{border-bottom:0}
+.sh .d{font-family:var(--f-mono);font-size:.85rem;color:var(--muted)}
+.sh .w{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh .v{grid-column:2/4;font-family:var(--f-mono);font-size:.85rem}
+.sh .x{font-size:.75rem;color:var(--muted);grid-column:2/4}
+</style>
+</head>
+<body>
+<div id="busy" hidden></div>
+<div id="app"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* ===== АДРЕС НА СЪРВЪРА =====
+   Сложи тук адреса от Apps Script → Внедряване → Управление на внедряванията (завършва на /exec). */
+const API='https://script.google.com/macros/s/AKfycbziRhvT6ub_yFVhW6YJGPsY2dFaMTtLLZjrHMb8f8wMboKATxmxttxNKgy6FslPszs0Gg/exec';
+const KEY='mashinen-park-g2';
+const POLL_MS=60000;
+const SVC_EVERY=500, SVC_WARN=50; // обслужване на всеки 500 мч, предупреждение 50 мч по-рано
+const DCLS={'повредена':'c-bad','в ремонт':'c-warn','поправена':'c-ok'};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad2=n=>String(n).padStart(2,'0');
+const fmt=t=>{const d=new Date(t);return `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`};
+const fmtD=t=>{const d=new Date(t);return `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()}`};
+const fmtT=t=>{const d=new Date(t);return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`};
+const iso=t=>{const d=t?new Date(t):new Date();return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`};
+const nf=n=>n==null?'—':Number(n).toLocaleString('bg-BG');
+const unitL=u=>u==='км'?'километра':'моточаса';
+const unitIn=u=>u==='км'?'Километраж':'Моточасове';
+const stChip=s=>s==='спряна'?'<span class="chip c-bad">спряна</span>':'<span class="chip c-ok">работи</span>';
+
+let db=null, me=null, pin=null, loadErr='';
+let view={n:'home'}, entry='', op={q:'',repair:false,done:null}, confirmKey=null, busy=false, seq=0, allShifts={}, allMoves={}, loadingShifts={};
+const SH_PAGE=30;
+try{pin=localStorage.getItem(KEY+'-pin')}catch(e){}
+function savePin(){try{pin?localStorage.setItem(KEY+'-pin',pin):localStorage.removeItem(KEY+'-pin')}catch(e){}}
+
+const M=id=>db.machines.find(m=>m.id===id);
+const byNum=n=>db.machines.find(m=>m.num===String(n).trim());
+const openShiftOn=mid=>db.shifts.find(s=>s.machineId===mid&&s.endAt==null);
+const isA=()=>me&&me.role==='администратор';
+function svc(m){
+  if(m.unit!=='мч')return null;
+  const last=db.repairs.filter(r=>r.machineId===m.id&&r.kind==='обслужване'&&r.val!=null).sort((a,b)=>b.val-a.val)[0];
+  if(!last)return {none:true};
+  const next=last.val+SVC_EVERY,left=Math.round((next-(m.val||0))*10)/10;
+  return {last,next,left,due:left<=SVC_WARN,over:left<0};
+}
+function svcChip(m){
+  const s=svc(m);if(!s||s.none||!s.due)return '';
+  return s.over?`<span class="chip c-bad">обсл. просрочено ${nf(-s.left)} мч</span>`:`<span class="chip c-warn">обсл. след ${nf(s.left)} мч</span>`;
+}
+
+let tt;function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(tt);tt=setTimeout(()=>e.hidden=true,2800)}
+function go(n,extra={}){if(n==='machine'&&extra.id&&view.id!==extra.id)delete allShifts[extra.id];view={n,...extra};confirmKey=null;render();window.scrollTo(0,0)}
+function setBusy(b){busy=b;$('#busy').hidden=!b;document.body.classList.toggle('busy',b)}
+function netMsg(m){return /network|NetworkError|Failed to fetch|Load failed|connection|timed out/i.test(m)?'Няма интернет. Опитай пак.':m}
+
+/* ---------- сървър ---------- */
+/* Връзка с Google Apps Script през интернет (doPost в Code.gs).
+   Пращаме обикновен текст, за да няма допълнителна проверка от браузъра. */
+async function call(action,args,p){
+  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(API))throw new Error('Липсва адресът на сървъра в index.html (API).');
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),45000);
+  let r;
+  try{
+    r=await fetch(API,{method:'POST',redirect:'follow',signal:ctl.signal,
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({pin:p===undefined?pin:p,action,args:args||{}})});
+  }catch(e){
+    throw new Error(e&&e.name==='AbortError'?'Сървърът не отговаря. Опитай пак.':'Няма интернет. Опитай пак.');
+  }finally{clearTimeout(tm)}
+  let j;
+  try{j=await r.json()}catch(e){throw new Error('Сървърът върна грешен отговор. Провери дали внедряването е с достъп „Всеки“.')}
+  if(!j||!j.ok)throw new Error(netMsg(String(j&&j.error||'Грешка').replace(/^(Exception|Error|Грешка):\s*/,'')));
+  return j.data;
+}
+function act(action,args,o={}){
+  if(busy)return;
+  setBusy(true);seq++;
+  call(action,args).then(r=>{
+    setBusy(false);db=r;me=r.me;allShifts={};
+    if(o.ok)toast(o.ok);
+    o.then?o.then():render();
+  }).catch(e=>{
+    setBusy(false);
+    if(e.message==='AUTH'){logout('Влез отново.');return}
+    const el=o.err&&$(o.err);
+    if(el)el.textContent=e.message;else toast(e.message);
+  });
+}
+function canAuto(){
+  const a=document.activeElement;
+  if(a&&a.matches&&a.matches('input,textarea,select'))return false;
+  return !confirmKey&&(view.n==='home'||view.n==='machine');
+}
+function refresh(silent){
+  if(!me||busy||me.role==='машинист')return;
+  const s=seq;
+  call('load',{}).then(r=>{
+    if(s!==seq||busy)return;
+    db=r;me=r.me;
+    if(!silent&&view.n==='machine')delete allShifts[view.id];
+    if(!silent||canAuto())render();
+    if(!silent)toast('Обновено.');
+  }).catch(e=>{
+    if(e.message==='AUTH')logout('Влез отново.');
+    else if(!silent)toast(e.message);
+  });
+}
+setInterval(()=>{if(document.visibilityState==='visible')refresh(true)},POLL_MS);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh(true)});
+
+function boot(){
+  render();
+  if(pin){
+    call('login',{}).then(r=>{db=r;me=r.me;render()}).catch(e=>{
+      if(e.message==='AUTH'){pin=null;savePin()}else loadErr=e.message;
+      render();
+    });
+  }
+}
+
+/* ---------- ВХОД С ПИН ---------- */
+function loginView(){
+  if(pin&&!loadErr)return `<div class="center"><div class="spin"></div><div class="muted">Зареждане…</div></div>`;
+  return `<div class="login"><div class="hero"><div class="hero-in">
+    <div class="brand"><i></i>Машинен парк</div>
+    <h1>Въведи ПИН</h1>
+    <div class="small" style="opacity:.8">Твоят личен код от четири цифри</div></div></div>
+    <div class="stripe"></div><main class="wrap">
+      <div class="card" style="align-items:center;text-align:center;gap:6px">
+        <div class="dots">${[0,1,2,3].map(i=>`<span class="${i<entry.length?'on':''}"></span>`).join('')}</div>
+        <div class="err" id="lerr" style="min-height:1.3em;display:block">${esc(loadErr)}</div>
+      </div>
+      <div class="pad">${[1,2,3,4,5,6,7,8,9].map(k=>`<button onclick="pinKey('${k}')">${k}</button>`).join('')}
+        <button class="fn" onclick="entry='';loadErr='';render()">Изчисти</button>
+        <button onclick="pinKey('0')">0</button>
+        <button class="fn" aria-label="Изтрий" onclick="entry=entry.slice(0,-1);render()">⌫</button></div>
+    </main></div>`;
+}
+function pinKey(k){
+  if(busy||entry.length>=4)return;
+  entry+=k;loadErr='';render();
+  if(entry.length===4){
+    const p=entry;
+    setBusy(true);
+    call('login',{},p).then(r=>{
+      setBusy(false);pin=p;savePin();db=r;me=r.me;entry='';
+      view={n:'home'};op={q:'',repair:false,done:null};render();
+    }).catch(e=>{
+      setBusy(false);entry='';
+      loadErr=e.message==='AUTH'?'Грешен ПИН. Опитай пак.':e.message;render();
+    });
+  }
+}
+document.addEventListener('keydown',e=>{
+  if(me||!(pin==null||loadErr))return;
+  if(/^\d$/.test(e.key))pinKey(e.key);
+  else if(e.key==='Backspace'){entry=entry.slice(0,-1);render()}
+});
+function logout(msg){
+  me=null;db=null;pin=null;savePin();entry='';loadErr='';view={n:'home'};
+  render();if(msg)toast(msg);
+}
+
+/* ---------- РАМКА ---------- */
+const IC={
+  mach:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="13" width="13" height="5" rx="2"/><path d="M5 13V9h6l2 4M15 15h3l3-6-4-2"/><circle cx="5.5" cy="20" r="1.5"/><circle cx="11.5" cy="20" r="1.5"/></svg>',
+  ppl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2.4.7 4 2.8 4 6"/></svg>',
+  site:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
+  ref:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>'};
+function header(){
+  return `<header class="top"><div class="top-in"><div class="brand"><i></i><span class="bt">Машинен парк</span></div>
+    <div class="who"><b>${esc(me.name)}</b>${esc(me.role)}</div>
+    ${me.role!=='машинист'?`<button aria-label="Обнови" title="Обнови" onclick="refresh(false)">${IC.ref}</button>`:''}
+    <button onclick="logout()">Изход</button></div></header>`;
+}
+function nav(){
+  if(!isA())return '';
+  const tabs=[['home','Машини',IC.mach],['people','Хора',IC.ppl],['sites','Обекти',IC.site]];
+  const cur=['people','userForm'].includes(view.n)?'people':view.n==='sites'?'sites':'home';
+  return `<nav class="nav"><div class="nav-in">${tabs.map(([k,l,i])=>`<button class="${cur===k?'on':''}" onclick="go('${k}')">${i}${l}</button>`).join('')}</div></nav>`;
+}
+function render(){
+  const app=$('#app');
+  if(!me||!db){app.innerHTML=loginView();return}
+  let b;
+  if(me.role==='машинист')b=opView();
+  else{
+    const v=view.n;
+    b= v==='machine'?machineView(view.id)
+     : isA()&&v==='machineForm'?machineForm()
+     : isA()&&v==='damageForm'?damageForm()
+     : isA()&&v==='repairForm'?repairForm()
+     : isA()&&v==='people'?peopleView()
+     : isA()&&v==='userForm'?userForm()
+     : isA()&&v==='sites'?sitesView()
+     : homeView();
+  }
+  app.innerHTML=header()+`<main class="wrap">${b}</main>`+nav();
+}
+function readNum(sel){const v=String($(sel).value).replace(/\s/g,'').replace(',','.');return v===''?NaN:Number(v)}
+
+/* ---------- МАШИНИСТ ---------- */
+function opView(){
+  if(op.done){
+    const d=op.done;
+    return `<section class="card"><div class="okbox">✓ Смяната е записана</div>
+      <div><span class="num">${esc(d.num)}</span> ${esc(d.type)}</div>
+      ${d.from!=null&&d.to!=null?`<div class="mono">${nf(d.from)} → ${nf(d.to)} ${d.unit} · +${nf(Math.round((d.to-d.from)*10)/10)}</div>`:''}
+      <div class="muted">Довиждане!</div>
+      <button class="btn pri" onclick="logout()">Изход</button></section>`;
+  }
+  const sh=db.shifts.find(s=>s.endAt==null);
+  const t0=new Date();t0.setHours(0,0,0,0);
+  if(sh&&sh.startAt>=t0.getTime()&&M(sh.machineId))return endView(sh);
+  return startView(sh);
+}
+function startView(old){
+  const om=old&&M(old.machineId);
+  return `${om?`<div class="demo">Вчера не приключи смяната на <b>${esc(om.num)}</b>. Няма проблем — ще се приключи сама, щом въведеш показанията днес.</div>`:''}
+    <section class="card"><h2>Започвам работа</h2>
+    <label for="onum">Номер на машината
+      <input id="onum" class="numin" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="0000" value="${esc(op.q)}" oninput="this.value=this.value.replace(/\\D/g,'');op.q=this.value;op.repair=false;drawOp()"></label>
+    <div id="opm" style="display:flex;flex-direction:column;gap:12px">${opMatch()}</div></section>`;
+}
+function drawOp(){const e=$('#opm');if(e)e.innerHTML=opMatch()}
+function opMatch(){
+  const q=op.q;
+  if(q.length<4)return `<div class="small muted">Напиши вътрешния номер — 4 или 5 цифри.</div>`;
+  const m=byNum(q);
+  if(!m)return q.length>=5||!db.machines.some(x=>x.num.startsWith(q))?`<div class="err">Няма машина с номер ${esc(q)}. Провери номера.</div>`:`<div class="small muted">Довърши номера…</div>`;
+  const card=`<div class="mcard"><span class="mono" style="font-size:1.6rem;font-weight:700">${esc(m.num)}</span><span>${esc(m.type)} · ${esc(m.model||'')}</span>
+    <span class="small muted">Последно: <span class="mono">${nf(m.val)} ${m.unit}</span></span></div>`;
+  if(m.status==='спряна'&&!op.repair){
+    return card+`<div class="alert">⚠ Машината е спряна.</div>
+      <div class="btns"><button class="btn pri" onclick="op.repair=true;drawOp()">Помагам при ремонта</button>
+      <button class="btn" onclick="op.q='';render();$('#onum').focus()">Друга машина</button></div>`;
+  }
+  const sites=db.sites.map(s=>s.name);
+  if(m.location&&!sites.includes(m.location))sites.unshift(m.location);
+  const rep=op.repair;
+  return card+(rep?`<div class="chip c-warn" style="align-self:flex-start">Ремонт</div>`:'')+`
+    ${rep?'':`<label for="osite">Къде е машината
+      <select id="osite">${sites.length?'':'<option value="">—</option>'}${sites.map(s=>`<option ${s===m.location?'selected':''}>${esc(s)}</option>`).join('')}</select></label>`}
+    <label for="oval">${unitIn(m.unit)} сега${rep?' (по желание)':''}
+      <input id="oval" class="big-in" inputmode="decimal" placeholder="${m.val||0}" autocomplete="off"></label>
+    <div id="oerr" class="err"></div>
+    <button class="btn pri" onclick="startShift('${m.id}')">${rep?'Започвам ремонта':'Започвам'}</button>`;
+}
+function startShift(mid){
+  const m=M(mid),v=readNum('#oval'),rep=op.repair,e=$('#oerr');
+  if(!rep&&isNaN(v)){e.textContent='Въведи показанието от таблото.';return}
+  if(!isNaN(v)&&v<(m.val||0)){e.textContent=`По-малко е от последното (${nf(m.val)} ${m.unit}). Провери цифрите.`;return}
+  const site=$('#osite')?$('#osite').value:'';
+  act('start',{mid,val:isNaN(v)?'':v,site,kind:rep?'ремонт':'работа'},{err:'#oerr',ok:'Записано. Приятна работа!',then:()=>{op={q:'',repair:false,done:null};render()}});
+}
+function endView(sh){
+  const m=M(sh.machineId),rep=sh.kind==='ремонт';
+  return `<section class="shift"><span class="lbl">${rep?'Помагаш при ремонт на':'Ти си на машина'}</span>
+      <div class="mnum">${esc(m.num)}</div><div>${esc(m.type)} · ${esc(m.model||'')}</div>
+      <div class="small" style="opacity:.8">От ${fmtT(sh.startAt)}${sh.startVal!=null?` при <span class="mono">${nf(sh.startVal)} ${m.unit}</span>`:''} · ${esc(m.location||'')}</div></section>
+    <section class="card"><h2>Приключвам</h2>
+    <label for="eval">${unitIn(m.unit)} сега${rep?' (по желание)':''}
+      <input id="eval" class="big-in" inputmode="decimal" autocomplete="off" placeholder="${sh.startVal??m.val??0}" oninput="eDiff(${sh.startVal??'null'},'${m.unit}')"></label>
+    <div id="ediff" class="small muted"></div><div id="eerr" class="err"></div>
+    <button class="btn pri" onclick="endShift()">Приключвам смяната</button></section>`;
+}
+function eDiff(s,u){const v=readNum('#eval');$('#ediff').textContent=isNaN(v)||s==null?'':`За смяната: ${nf(Math.round((v-s)*10)/10)} ${u}`}
+function endShift(){
+  const sh=db.shifts.find(s=>s.endAt==null),m=M(sh.machineId),v=readNum('#eval'),rep=sh.kind==='ремонт';
+  if(!rep&&isNaN(v)){$('#eerr').textContent='Въведи показанието от таблото.';return}
+  const min=sh.startVal??m.val??0;
+  if(!isNaN(v)&&v<min){$('#eerr').textContent=`Не може да е по-малко от ${nf(min)} ${m.unit}.`;return}
+  const done={num:m.num,type:m.type,unit:m.unit,from:sh.startVal,to:isNaN(v)?null:v};
+  act('end',{val:isNaN(v)?'':v},{err:'#eerr',then:()=>{op.done=done;render()}});
+}
+
+/* ---------- НАЧАЛО: ръководител / администратор ---------- */
+function homeView(){
+  const types=[...new Set(db.machines.map(m=>m.type))].sort((a,b)=>a.localeCompare(b,'bg'));
+  const stopped=db.machines.filter(m=>m.status==='спряна').sort((a,b)=>a.num.localeCompare(b.num));
+  const t=view.type||'';
+  let typeBlock='';
+  if(t){
+    const ms=db.machines.filter(m=>m.type===t).sort((a,b)=>(a.location||'').localeCompare(b.location||'','bg')||a.num.localeCompare(b.num));
+    const per={};ms.forEach(m=>{const k=m.location||'—';per[k]=(per[k]||0)+1});
+    const st=ms.filter(m=>m.status==='спряна').length;
+    typeBlock=`<div><b>${ms.length} бр.</b>${st?` · <span style="color:var(--bad)">${st} спрени</span>`:''}</div>
+      <div class="sumline">${Object.entries(per).map(([k,n])=>`<span class="chip c-n">${esc(k)}: ${n}</span>`).join('')}</div>
+      <div class="list">${ms.map(mRow).join('')}</div>`;
+  }
+  return `<section class="card"><h2>Търси машина</h2>
+    <label for="mq">Вътрешен номер
+      <input id="mq" class="numin" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0000" autocomplete="off" oninput="this.value=this.value.replace(/\\D/g,'');$('#mres').innerHTML=mSearch(this.value)" onkeydown="if(event.key==='Enter'){const m=byNum(this.value);if(m)go('machine',{id:m.id})}"></label>
+    <div id="mres" class="list"></div></section>
+  <section class="card"><label for="mtype">Вид машина
+    <select id="mtype" onchange="view.type=this.value;render()"><option value="">— избери, ако искаш списък —</option>${types.map(x=>`<option value="${esc(x)}" ${x===t?'selected':''}>${esc(x)} (${db.machines.filter(m=>m.type===x).length})</option>`).join('')}</select></label>
+    ${typeBlock}</section>
+  ${(()=>{const due=db.machines.filter(m=>{const s=svc(m);return s&&s.due}).sort((a,b)=>svc(a).left-svc(b).left);
+    return due.length?`<section class="card"><h3>За обслужване · ${due.length}</h3><div class="list">${due.map(mRow).join('')}</div></section>`:''})()}
+  ${stopped.length?`<section class="card"><h3>Спрени машини · ${stopped.length}</h3><div class="list">${stopped.map(mRow).join('')}</div></section>`:''}
+  ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
+  ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
+}
+function mSearch(q){
+  if(!q)return '';
+  const r=db.machines.filter(m=>m.num.includes(q)).sort((a,b)=>a.num.localeCompare(b.num));
+  return r.length?r.slice(0,20).map(mRow).join(''):'<div class="empty">Няма машина с такъв номер.</div>';
+}
+function mRow(m){
+  const sh=openShiftOn(m.id);
+  return `<button class="row" onclick="go('machine',{id:'${m.id}'})"><span class="num">${esc(m.num)}</span>
+    <div class="main"><div class="t">${esc(m.type)} ${esc(m.model||'')}</div><div class="s">${esc(m.location||'—')} · <span class="mono">${nf(m.val)} ${m.unit}</span>${sh?` · ${esc(sh.user||'')}`:''}</div></div>
+    <div class="stack">${stChip(m.status)}${svcChip(m)}</div></button>`;
+}
+
+/* ---------- ДОСИЕ ---------- */
+function machineView(id){
+  const m=M(id);if(!m)return homeView();
+  const A=isA();
+  const dmg=db.damages.filter(d=>d.machineId===id).sort((a,b)=>(a.status==='поправена')-(b.status==='поправена')||b.at-a.at);
+  const reps=db.repairs.filter(r=>r.machineId===id).sort((a,b)=>b.at-a.at);
+  const full=allShifts[id];
+  if(!full&&!loadingShifts[id])setTimeout(()=>loadShifts(id));
+  const lim=view.shN||SH_PAGE;
+  const shs=full?full.slice(0,lim):[];
+  const cur=openShiftOn(id);
+  const stBtn=A?(confirmKey==='st'?`<div class="btns"><button class="btn sm ${m.status==='спряна'?'pri':'danger'}" onclick="act('setStatus',{mid:'${id}',status:'${m.status==='спряна'?'работи':'спряна'}'},{ok:'Състоянието е сменено.'})">Да, ${m.status==='спряна'?'работи':'спряна е'}</button><button class="btn sm" onclick="confirmKey=null;render()">Отказ</button></div>`
+      :`<button class="btn sm" onclick="confirmKey='st';render()">${m.status==='спряна'?'Отбележи: работи':'Отбележи: спряна'}</button>`):'';
+  return `<button class="back" onclick="go('home',{type:view.type})">← Назад</button>
+  <section class="card"><div class="toolbar"><div class="mhead"><span class="mnum">${esc(m.num)}</span><span class="muted">${esc(m.type)} · ${esc(m.model||'')}</span></div>${stChip(m.status)}</div>
+    <div class="meter"><span class="v">${nf(m.val)}</span><span class="u">${unitL(m.unit)}</span></div>
+    <dl class="kv"><dt>Къде е</dt><dd><b>${esc(m.location||'—')}</b></dd>
+    ${(()=>{const s=svc(m);if(!s)return '';
+      if(s.none)return `<dt>Обслужване</dt><dd><span class="muted">няма записано обслужване</span></dd>`;
+      return `<dt>Обслужване</dt><dd>следващото при <b class="mono">${nf(s.next)} мч</b> · ${s.over?`<span style="color:var(--bad);font-weight:600">просрочено с ${nf(-s.left)} мч</span>`:s.due?`<span style="color:var(--warn);font-weight:600">след ${nf(s.left)} мч</span>`:`след ${nf(s.left)} мч`}</dd>`})()}
+    <dt>Сега</dt><dd>${cur?`${esc(cur.user||'')}${cur.kind==='ремонт'?' (ремонт)':''}, от ${fmt(cur.startAt)}`:'Никой не е на машината'}</dd></dl>
+    ${A?`<div class="btns">${stBtn}<button class="btn sm" onclick="go('machineForm',{id:'${id}'})">Промени данните</button></div>`:''}</section>
+
+  <section class="card"><div class="toolbar"><h3>Повреди · ${dmg.length}</h3>${A?`<button class="btn sm" onclick="go('damageForm',{mid:'${id}'})">+ Повреда</button>`:''}</div>
+    ${dmg.length?dmg.map(d=>`<div class="ev ${d.status==='поправена'?'ok':d.status==='в ремонт'?'warn':'bad'}"><div class="h"><span class="chip ${DCLS[d.status]||'c-n'}">${esc(d.status)}</span><span>${fmtD(d.at)}</span>${d.closedAt?`<span>поправена ${fmtD(d.closedAt)}</span>`:''}</div>
+      <div>${esc(d.text)}</div>${d.service?`<div class="small muted">Сервиз: <b style="color:var(--ink)">${esc(d.service)}</b></div>`:''}
+      ${A?`<button class="btn sm" style="align-self:flex-start" onclick="go('damageForm',{mid:'${id}',did:'${d.id}'})">Промени</button>`:''}</div>`).join(''):'<div class="empty">Няма записани повреди.</div>'}</section>
+
+  <section class="card"><div class="toolbar"><h3>Ремонти и обслужване · ${reps.length}</h3>${A?`<button class="btn sm" onclick="go('repairForm',{mid:'${id}'})">+ Запис</button>`:''}</div>
+    ${reps.length?reps.map(r=>`<div class="ev ok"><div class="h">${r.kind==='обслужване'?'<span class="chip c-ok">обслужване</span>':'<span class="chip c-n">ремонт</span>'}<b style="color:var(--ink)">${esc(r.service)}</b><span>${fmtD(r.at)}</span>${r.val!=null?`<span class="mono">при ${nf(r.val)} ${m.unit}</span>`:''}</div><div>${esc(r.text)}</div>
+      ${A?`<button class="btn sm" style="align-self:flex-start" onclick="go('repairForm',{mid:'${id}',rid:'${r.id}'})">Промени</button>`:''}</div>`).join(''):'<div class="empty">Няма записани ремонти.</div>'}</section>
+
+  <section class="card"><h3>Къде е била</h3>
+    ${!full?'<div class="empty">Зареждане…</div>':placesHtml(id)}</section>
+
+  <section class="card"><h3>Кой я е карал</h3>
+    ${!full?'<div class="empty">Зареждане…</div>':shs.length?`<div>${shs.map(s=>shiftRow(s,m)).join('')}</div>`:'<div class="empty">Няма записани смени.</div>'}
+    ${full&&full.length>lim?`<button class="btn sm" onclick="view.shN=${lim+SH_PAGE};render()">Покажи още (${full.length-lim} по-стари)</button>`:''}</section>`;
+}
+function placesHtml(id){
+  const ev=[...(allShifts[id]||[]).filter(s=>s.site).map(s=>({t:s.startAt,site:s.site})),...(allMoves[id]||[]).map(x=>({t:x.movedAt,site:x.site,move:x.by}))]
+    .filter(e=>e.t).sort((a,b)=>a.t-b.t);
+  if(!ev.length)return '<div class="empty">Още няма записи. Историята се трупа от смените и преместванията.</div>';
+  const runs=[];
+  ev.forEach(e=>{const r=runs[runs.length-1];if(r&&r.site===e.site)r.to=e.t;else runs.push({site:e.site,from:e.t,to:e.t})});
+  runs.forEach((r,i)=>{if(runs[i+1])r.until=runs[i+1].from});
+  const lim=view.plN||15,list=runs.slice().reverse();
+  return `<div>${list.slice(0,lim).map((r,i)=>`<div class="sh"><span class="d">${fmtD(r.from)}${i===0?' – сега':fmtD(r.to)!==fmtD(r.from)?' – '+fmtD(r.to):''}</span><span class="w">${esc(r.site)}</span><span></span></div>`).join('')}</div>
+    ${list.length>lim?`<button class="btn sm" onclick="view.plN=${lim+15};render()">Покажи още (${list.length-lim})</button>`:''}`;
+}
+function shiftRow(s,m){
+  const diff=s.startVal!=null&&s.endVal!=null?` · +${nf(Math.round((s.endVal-s.startVal)*10)/10)}`:'';
+  const endTxt=s.endAt==null?'още работи':s.endVal!=null?`${nf(s.endVal)} ${m.unit}`:'?';
+  const kick=s.endAt==null&&isA()?(confirmKey==='end'+s.id?` <button class="btn sm danger" onclick="act('endShift',{sid:'${s.id}'},{ok:'Смяната е приключена.'})">Да, приключи</button>`:` <button class="btn sm" onclick="confirmKey='end${s.id}';render()">Приключи</button>`):'';
+  return `<div class="sh"><span class="d">${fmtD(s.startAt)}</span><span class="w">${esc(s.user||'')}</span>${s.kind==='ремонт'?'<span class="chip c-warn">ремонт</span>':'<span></span>'}
+    <span class="v">${s.startVal!=null?nf(s.startVal):'—'} → ${endTxt}${diff}${kick}</span>
+    ${s.site?`<span class="x">📍 ${esc(s.site)}</span>`:''}
+    ${s.auto?`<span class="x">приключена автоматично${s.endVal==null&&s.endAt!=null?' · крайното ще се попълни при следващото качване':''}</span>`:''}</div>`;
+}
+function loadShifts(id){
+  loadingShifts[id]=true;
+  call('shiftsOf',{mid:id}).then(r=>{loadingShifts[id]=false;allShifts[id]=r.shifts;allMoves[id]=r.moves||[];if(view.n==='machine'&&view.id===id&&canAuto())render()})
+    .catch(e=>{loadingShifts[id]=false;allShifts[id]=[];toast(e.message);render()});
+}
+
+/* ---------- АДМИН: формуляри ---------- */
+function siteOptions(cur){
+  const s=db.sites.map(x=>x.name);if(cur&&!s.includes(cur))s.unshift(cur);
+  return `<option value="">—</option>`+s.map(x=>`<option ${x===cur?'selected':''}>${esc(x)}</option>`).join('');
+}
+function machineForm(){
+  const m=view.id?M(view.id):null;
+  const types=[...new Set(db.machines.map(x=>x.type))];
+  return `<button class="back" onclick="${m?`go('machine',{id:'${m.id}'})`:`go('home')`}">← Назад</button>
+  <section class="card"><h2>${m?'Промени машина':'Нова машина'}</h2>
+    <label for="fnum">Вътрешен номер (4 или 5 цифри)<input id="fnum" class="mono" inputmode="numeric" maxlength="5" value="${esc(m?.num)}" placeholder="напр. 0123" autocomplete="off"></label>
+    <label for="ftype">Вид<input id="ftype" list="tl" value="${esc(m?.type)}" placeholder="напр. Багер"></label>
+    <datalist id="tl">${types.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
+    <label for="fmodel">Марка и модел<input id="fmodel" value="${esc(m?.model)}" placeholder="напр. CAT 320"></label>
+    <label for="funit">Отчита<select id="funit"><option value="мч" ${m?.unit!=='км'?'selected':''}>Моточасове</option><option value="км" ${m?.unit==='км'?'selected':''}>Километри</option></select></label>
+    <label for="fval">Показание сега<input id="fval" class="big-in" inputmode="decimal" value="${m?m.val??'':''}" placeholder="0"></label>
+    <label for="floc">Къде е<select id="floc">${siteOptions(m?.location)}</select></label>
+    <label for="fst">Състояние<select id="fst"><option ${m?.status!=='спряна'?'selected':''}>работи</option><option ${m?.status==='спряна'?'selected':''}>спряна</option></select></label>
+    <div id="ferr" class="err"></div><button class="btn pri" onclick="saveMachine()">Запази</button></section>`;
+}
+function saveMachine(){
+  const g=s=>$(s).value.trim(),num=g('#fnum');
+  if(!/^\d{4,5}$/.test(num)){$('#ferr').textContent='Номерът трябва да е 4 или 5 цифри.';return}
+  if(!g('#ftype')){$('#ferr').textContent='Въведи вид на машината.';return}
+  act('saveMachine',{id:view.id||null,num,type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst')},
+    {err:'#ferr',ok:'Машината е записана.',then:()=>{const m=byNum(num);m?go('machine',{id:m.id}):go('home')}});
+}
+function services(){return [...new Set([...db.repairs.map(r=>r.service),...db.damages.map(d=>d.service)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'bg'))}
+function delBtn(kind,id,mid){
+  return confirmKey==='del'?`<button class="btn danger" onclick="act('${kind}',{id:'${id}'},{ok:'Изтрито.',then:()=>go('machine',{id:'${mid}'})})">Да, изтрий</button>`
+    :`<button class="btn" onclick="confirmKey='del';render()">Изтрий</button>`;
+}
+function damageForm(){
+  const m=M(view.mid);if(!m)return homeView();
+  const d=view.did?db.damages.find(x=>x.id===view.did):null;
+  return `<button class="back" onclick="go('machine',{id:'${m.id}'})">← Назад</button>
+  <section class="card"><h2>${d?'Промени повреда':'Нова повреда'}</h2>
+    <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
+    <label for="ddate">Дата<input id="ddate" type="date" value="${iso(d?.at)}"></label>
+    <label for="dtext">Какво се е повредило<textarea id="dtext" placeholder="напр. тече хидравлично масло от стрелата">${esc(d?.text)}</textarea></label>
+    <label for="dst">Статус<select id="dst">${['повредена','в ремонт','поправена'].map(s=>`<option ${(d?.status||'повредена')===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label for="dsvc">Сервиз<input id="dsvc" list="svcl" value="${esc(d?.service)}" placeholder="попълни, когато е ясен"></label>
+    <datalist id="svcl">${services().map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
+    ${!d&&m.status!=='спряна'?`<div class="seg"><label><input type="checkbox" id="dstop"> Машината е спряна заради тази повреда</label></div>`:''}
+    <div id="derr" class="err"></div>
+    <div class="btns"><button class="btn pri" onclick="saveDamage()">Запази</button>${d?delBtn('delDamage',d.id,m.id):''}</div></section>`;
+}
+function saveDamage(){
+  const t=$('#dtext').value.trim();if(!t){$('#derr').textContent='Опиши повредата.';return}
+  const mid=view.mid,stop=$('#dstop')&&$('#dstop').checked;
+  act('saveDamage',{id:view.did||null,mid,date:$('#ddate').value,text:t,status:$('#dst').value,service:$('#dsvc').value.trim()},
+    {err:'#derr',ok:'Повредата е записана.',then:()=>{if(stop){act('setStatus',{mid,status:'спряна'},{then:()=>go('machine',{id:mid})})}else go('machine',{id:mid})}});
+}
+function repairForm(){
+  const m=M(view.mid);if(!m)return homeView();
+  const r=view.rid?db.repairs.find(x=>x.id===view.rid):null;
+  return `<button class="back" onclick="go('machine',{id:'${m.id}'})">← Назад</button>
+  <section class="card"><h2>${r?'Промени запис':'Ремонт или обслужване'}</h2>
+    <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
+    <label for="rkind">Вид<select id="rkind"><option value="ремонт" ${r?.kind!=='обслужване'?'selected':''}>Ремонт</option><option value="обслужване" ${r?.kind==='обслужване'?'selected':''}>Обслужване${m.unit==='мч'?` (на всеки ${SVC_EVERY} мч)`:''}</option></select></label>
+    <label for="rdate">Дата<input id="rdate" type="date" value="${iso(r?.at)}"></label>
+    <label for="rsvc">Сервиз<input id="rsvc" list="svcl" value="${esc(r?.service)}" placeholder="напр. Сервиз „Хидротех“"></label>
+    <datalist id="svcl">${services().map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
+    <label for="rtext">Какво е направено<textarea id="rtext" placeholder="напр. смяна на масла и филтри">${esc(r?.text)}</textarea></label>
+    <label for="rval">${unitIn(m.unit)} при ремонта<input id="rval" class="big-in" inputmode="decimal" value="${r?r.val??'':m.val??''}"></label>
+    <div id="rerr" class="err"></div>
+    <div class="btns"><button class="btn pri" onclick="saveRepair()">Запази</button>${r?delBtn('delRepair',r.id,m.id):''}</div></section>`;
+}
+function saveRepair(){
+  const s=$('#rsvc').value.trim(),t=$('#rtext').value.trim();
+  if(!s||!t){$('#rerr').textContent='Попълни сервиза и какво е направено.';return}
+  const mid=view.mid,kind=$('#rkind').value,val=$('#rval').value.trim().replace(',','.');
+  if(kind==='обслужване'&&M(mid).unit==='мч'&&!val){$('#rerr').textContent='За обслужване въведи моточасовете — от тях се смята следващото.';return}
+  act('saveRepair',{id:view.rid||null,mid,date:$('#rdate').value,service:s,text:t,val,kind},
+    {err:'#rerr',ok:'Записано.',then:()=>go('machine',{id:mid})});
+}
+
+/* ---------- АДМИН: хора ---------- */
+function peopleView(){
+  const R={'администратор':0,'ръководител':1,'машинист':2};
+  const us=[...db.users].sort((a,b)=>(R[a.role]-R[b.role])||a.name.localeCompare(b.name,'bg'));
+  const weak=us.find(u=>u.id===me.id&&u.pin==='1111');
+  return `${weak?`<div class="alert">Смени си ПИН-а! Сега е 1111 и всеки може да влезе като администратор.</div>`:''}
+  <div class="toolbar"><h2>Хора · ${us.length}</h2><button class="btn sm pri" onclick="go('userForm')">+ Добави човек</button></div>
+  <div class="list">${us.map(u=>`<button class="row" onclick="go('userForm',{id:'${u.id}'})"><div class="main"><div class="t">${esc(u.name)}${u.id===me.id?' (ти)':''}</div><div class="s">${esc(u.role)}</div></div><span class="num">${esc(u.pin)}</span></button>`).join('')}</div>`;
+}
+function suggestPin(){
+  const used=new Set(db.users.map(u=>u.pin));
+  for(let i=0;i<200;i++){const p=String(1000+Math.floor(Math.random()*9000));if(!used.has(p)&&!/^(\d)\1{3}$/.test(p))return p}
+  return '';
+}
+function userForm(){
+  const u=view.id?db.users.find(x=>x.id===view.id):null;
+  const self=u&&u.id===me.id;
+  return `<button class="back" onclick="go('people')">← Назад</button>
+  <section class="card"><h2>${u?'Промени човек':'Нов човек'}</h2>
+    <label for="uname">Име и фамилия<input id="uname" value="${esc(u?.name)}" autocomplete="off"></label>
+    <label for="urole">Роля<select id="urole" ${self?'disabled':''}>
+      <option value="машинист" ${(u?.role||'машинист')==='машинист'?'selected':''}>Машинист — въвежда смените си</option>
+      <option value="ръководител" ${u?.role==='ръководител'?'selected':''}>Ръководител — гледа машините и досиетата</option>
+      <option value="администратор" ${u?.role==='администратор'?'selected':''}>Администратор — въвежда всичко</option></select></label>
+    <label for="upin">ПИН (4 цифри, различен за всеки)
+      <input id="upin" class="big-in" inputmode="numeric" maxlength="4" value="${esc(u?u.pin:suggestPin())}" autocomplete="off"></label>
+    <button class="btn sm" style="align-self:flex-start" onclick="$('#upin').value=suggestPin()">Измисли ми ПИН</button>
+    <div id="uerr" class="err"></div>
+    <div class="btns"><button class="btn pri" onclick="saveUser()">Запази</button>
+    ${u&&!self?(confirmKey==='del'?`<button class="btn danger" onclick="act('delUser',{id:'${u.id}'},{ok:'Изтрит.',then:()=>go('people')})">Да, изтрий</button>`:`<button class="btn" onclick="confirmKey='del';render()">Изтрий</button>`):''}</div></section>`;
+}
+function saveUser(){
+  const n=$('#uname').value.trim(),r=$('#urole').value,p=$('#upin').value.trim();
+  if(!n){$('#uerr').textContent='Въведи име.';return}
+  if(!/^\d{4}$/.test(p)){$('#uerr').textContent='ПИН-ът трябва да е точно 4 цифри.';return}
+  const clash=db.users.find(u=>u.pin===p&&u.id!==view.id);
+  if(clash){$('#uerr').textContent=`Този ПИН вече е на ${clash.name}. Избери друг.`;return}
+  const id=view.id||null;
+  act('saveUser',{id,name:n,role:r,pin:p},{err:'#uerr',ok:`${n} е записан. ПИН: ${p}`,then:()=>{if(id===me.id){pin=p;savePin()}go('people')}});
+}
+
+/* ---------- АДМИН: обекти ---------- */
+function sitesView(){
+  const ss=[...db.sites].sort((a,b)=>a.name.localeCompare(b.name,'bg'));
+  return `<section class="card"><h2>Обекти</h2>
+    <div class="small muted">От този списък машинистите избират къде е машината.</div>
+    <label for="sname">Нов обект<input id="sname" placeholder="напр. Обект „Север“" autocomplete="off" onkeydown="if(event.key==='Enter')addSite()"></label>
+    <div id="serr" class="err"></div><button class="btn pri" onclick="addSite()">Добави</button></section>
+  <div class="list">${ss.map(s=>{const n=db.machines.filter(m=>m.location===s.name).length;
+    return `<div class="row" style="cursor:default"><div class="main"><div class="t">${esc(s.name)}</div><div class="s">${n} машини там сега</div></div>
+    ${confirmKey==='ds'+s.id?`<button class="btn sm danger" onclick="act('delSite',{id:'${s.id}'},{ok:'Обектът е махнат.'})">Да, махни</button>`:`<button class="btn sm" onclick="confirmKey='ds${s.id}';render()">Махни</button>`}</div>`}).join('')||'<div class="empty">Още няма обекти.</div>'}</div>`;
+}
+function addSite(){
+  const n=$('#sname').value.trim();if(!n){$('#serr').textContent='Въведи име.';return}
+  act('addSite',{name:n},{err:'#serr',ok:'Обектът е добавен.'});
+}
+
+boot();
+</script>
+</body>
+</html>
