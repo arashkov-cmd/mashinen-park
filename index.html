@@ -46,6 +46,7 @@ h3{font-size:1.05rem;text-transform:uppercase;letter-spacing:.06em;color:var(--m
 .brand{font-family:var(--f-display);font-size:1.2rem;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .brand i{display:inline-block;width:12px;height:12px;background:var(--accent);transform:rotate(45deg)}
 .who{margin-left:auto;text-align:right;font-size:.8rem;line-height:1.2;min-width:0}
+.who .wr{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
 .who b{display:block;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top button{background:transparent;color:var(--bg);border:1px solid color-mix(in srgb,var(--bg) 35%,transparent);border-radius:8px;padding:8px 10px;font:inherit;font-size:.85rem;cursor:pointer;display:flex;align-items:center}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
@@ -122,6 +123,7 @@ details.grp .row{border-color:transparent;background:var(--bg)}
 .nav button.on::before{content:"";position:absolute;top:0;left:25%;right:25%;height:3px;background:var(--accent);border-radius:0 0 3px 3px}
 .nav svg{width:24px;height:24px}
 .nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--bad);color:#fff;font-size:.7rem;border-radius:999px;padding:1px 6px;font-family:var(--f-mono)}
+.wait{position:fixed;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));z-index:31;background:var(--accent);color:var(--accent-ink);padding:14px 16px;border-radius:12px;font-weight:700;text-align:center;box-shadow:0 6px 20px rgb(0 0 0 / .25)}
 .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:10px;font-weight:600;z-index:20;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgb(0 0 0 / .25)}
 .back{background:none;border:0;font:inherit;font-weight:600;color:var(--muted);padding:4px 0;cursor:pointer;align-self:flex-start}
 .empty{color:var(--muted);font-size:.95rem;padding:4px 0}
@@ -160,6 +162,17 @@ input,select,textarea{min-width:0;max-width:100%}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 .sh{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
 .sh:last-child{border-bottom:0}
+.sgrps{display:flex;flex-direction:column;gap:8px}
+details.sgrp summary{flex-direction:column;align-items:stretch;gap:8px}
+.sg-top{display:flex;align-items:center;gap:10px}.sg-top .cnt{margin-left:auto;font-family:var(--f-mono);font-size:.9rem;color:var(--muted)}
+.sg-top::after{content:"▾";color:var(--muted);font-size:.9rem}details[open] .sg-top::after{content:"▴"}
+details.sgrp .sumline .chip{font-family:var(--f-body);font-size:.8rem;font-weight:500}
+.sg-type{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 16px 4px}
+.sgrp-empty{display:flex;justify-content:space-between;gap:10px;padding:10px 16px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:.95rem}
+.sgrp-empty .cnt{font-size:.85rem}
+.rday{display:flex;flex-direction:column;gap:8px;padding:6px 0 10px;border-bottom:1px solid var(--line)}
+.rday:last-child{border-bottom:0}
+.rdh{font-family:var(--f-display);font-size:1.05rem;letter-spacing:.02em}
 .sh .d{font-family:var(--f-mono);font-size:.85rem;color:var(--muted)}
 .sh .w{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sh .v{grid-column:2/4;font-family:var(--f-mono);font-size:.85rem}
@@ -170,6 +183,7 @@ input,select,textarea{min-width:0;max-width:100%}
 <div id="busy" hidden></div>
 <div id="app"></div>
 <div id="toast" class="toast" hidden></div>
+<div id="wait" class="wait" role="status" hidden></div>
 
 <script>
 /* ===== АДРЕС НА СЪРВЪРА =====
@@ -227,22 +241,41 @@ function netMsg(m){return /network|NetworkError|Failed to fetch|Load failed|conn
 /* ---------- сървър ---------- */
 /* Връзка с Google Apps Script през интернет (doPost в Code.gs).
    Пращаме обикновен текст, за да няма допълнителна проверка от браузъра. */
-async function call(action,args,p){
-  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(API))throw new Error('Липсва адресът на сървъра в index.html (API).');
-  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),45000);
+const READS={login:1,load:1,shiftsOf:1,report:1};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+/* Един опит до сървъра. Връща {data} или хвърля грешка; e.retry=true, ако може да се опита пак. */
+async function call1(body){
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),70000);
   let r;
   try{
     r=await fetch(API,{method:'POST',redirect:'follow',signal:ctl.signal,
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify({pin:p===undefined?pin:p,action,args:args||{}})});
+      headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
   }catch(e){
-    throw new Error(e&&e.name==='AbortError'?'Сървърът не отговаря. Опитай пак.':'Няма интернет. Опитай пак.');
+    const x=new Error(e&&e.name==='AbortError'?'Сървърът не отговаря. Опитай пак.':'Няма интернет. Опитай пак.');x.retry=true;throw x;
   }finally{clearTimeout(tm)}
   let j;
-  try{j=await r.json()}catch(e){throw new Error('Сървърът върна грешен отговор. Провери дали внедряването е с достъп „Всеки“.')}
-  if(!j||!j.ok)throw new Error(netMsg(String(j&&j.error||'Грешка').replace(/^(Exception|Error|Грешка):\s*/,'')));
+  try{j=await r.json()}catch(e){const x=new Error('Сървърът върна грешен отговор. Провери дали внедряването е с достъп „Всеки“.');x.retry=r.status>=500;throw x}
+  if(!j||!j.ok){const m=String(j&&j.error||'Грешка').replace(/^(Exception|Error|Грешка):\s*/,'');const x=new Error(netMsg(m));x.retry=m==='BUSY';throw x}
   return j.data;
 }
+/* Заявка с автоматично изчакване: при навалица или прекъсната връзка опитва пак сама.
+   Записите носят номер (_rid), така че повторен опит никога не записва два пъти. */
+async function call(action,args,p){
+  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(API))throw new Error('Липсва адресът на сървъра в index.html (API).');
+  args=Object.assign({},args||{});
+  if(!READS[action])args._rid=Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+  const body={pin:p===undefined?pin:p,action,args};
+  const tries=READS[action]?3:8;
+  for(let n=1;;n++){
+    try{const d=await call1(body);waitMsg('');return d}
+    catch(e){
+      if(!e.retry||n>=tries){waitMsg('');throw e.message==='BUSY'?new Error('Сървърът е много зает. Опитай пак след малко.'):e}
+      waitMsg(e.message==='BUSY'?'Много хора записват в момента. Изчакай — ще се запише само.':'Връзката е слаба. Опитваме пак — изчакай.');
+      await sleep(Math.min(2000*n,8000));
+    }
+  }
+}
+function waitMsg(t){const e=$('#wait');if(!e)return;e.textContent=t;e.hidden=!t}
 function act(action,args,o={}){
   if(busy)return;
   setBusy(true);seq++;
@@ -349,17 +382,19 @@ const IC={
   mach:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="13" width="13" height="5" rx="2"/><path d="M5 13V9h6l2 4M15 15h3l3-6-4-2"/><circle cx="5.5" cy="20" r="1.5"/><circle cx="11.5" cy="20" r="1.5"/></svg>',
   ppl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2.4.7 4 2.8 4 6"/></svg>',
   site:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
+  rep:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h4M7 17h7"/></svg>',
   ref:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>'};
 function header(){
   return `<header class="top"><div class="top-in"><div class="brand"><i></i><span class="bt">Машинен парк</span></div>
-    <div class="who"><b>${esc(me.name)}</b>${esc(me.role)}</div>
+    <div class="who"><b>${esc(me.name)}</b><span class="wr">${esc(me.role)}</span></div>
     ${me.role!=='машинист'?`<button aria-label="Обнови" title="Обнови" onclick="refresh(false)">${IC.ref}</button>`:''}
     <button onclick="logout()">Изход</button></div></header>`;
 }
 function nav(){
-  if(!isA())return '';
-  const tabs=[['home','Машини',IC.mach],['people','Хора',IC.ppl],['sites','Обекти',IC.site]];
-  const cur=['people','userForm'].includes(view.n)?'people':view.n==='sites'?'sites':'home';
+  if(!me||me.role==='машинист')return '';
+  const tabs=isA()?[['home','Машини',IC.mach],['report','Справки',IC.rep],['people','Хора',IC.ppl],['sites','Обекти',IC.site]]
+                  :[['home','Машини',IC.mach],['report','Справки',IC.rep]];
+  const cur=['people','userForm'].includes(view.n)?'people':view.n==='sites'?'sites':view.n==='report'?'report':'home';
   return `<nav class="nav"><div class="nav-in">${tabs.map(([k,l,i])=>`<button class="${cur===k?'on':''}" onclick="go('${k}')">${i}${l}</button>`).join('')}</div></nav>`;
 }
 function render(){
@@ -376,6 +411,7 @@ function render(){
      : isA()&&v==='people'?peopleView()
      : isA()&&v==='userForm'?userForm()
      : isA()&&v==='sites'?sitesView()
+     : v==='report'?reportView()
      : homeView();
   }
   app.innerHTML=header()+`<main class="wrap">${b}</main>`+nav();
@@ -475,6 +511,7 @@ function homeView(){
     <label for="mq">Вътрешен номер
       <input id="mq" class="numin" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0000" autocomplete="off" oninput="this.value=this.value.replace(/\\D/g,'');$('#mres').innerHTML=mSearch(this.value)" onkeydown="if(event.key==='Enter'){const m=byNum(this.value);if(m)go('machine',{id:m.id})}"></label>
     <div id="mres" class="list"></div></section>
+  ${sitesSummary()}
   <section class="card"><label for="mtype">Вид машина
     <select id="mtype" onchange="view.type=this.value;render()"><option value="">— избери, ако искаш списък —</option>${types.map(x=>`<option value="${esc(x)}" ${x===t?'selected':''}>${esc(x)} (${db.machines.filter(m=>m.type===x).length})</option>`).join('')}</select></label>
     ${typeBlock}</section>
@@ -483,6 +520,28 @@ function homeView(){
   ${stopped.length?`<section class="card"><h3>Спрени машини · ${stopped.length}</h3><div class="list">${stopped.map(mRow).join('')}</div></section>`:''}
   ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
   ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
+}
+/* Машини по обекти: за всеки обект колко машини има от всеки вид. Натискаш обект → списък по видове. */
+const openSites=new Set();
+function siteTg(el){el.open?openSites.add(el.dataset.k):openSites.delete(el.dataset.k)}
+function sitesSummary(){
+  if(!db.machines.length)return '';
+  const by={};db.machines.forEach(m=>{const k=m.location||'';(by[k]=by[k]||[]).push(m)});
+  const names=db.sites.map(s=>s.name);
+  Object.keys(by).forEach(k=>{if(k&&!names.includes(k))names.push(k)});
+  names.sort((a,b)=>(by[b]||[]).length-(by[a]||[]).length||a.localeCompare(b,'bg'));
+  if(by[''])names.push('');
+  return `<section class="card"><h3>Машини по обекти</h3><div class="sgrps">${names.map(n=>{
+    const ms=by[n]||[],key=n||'—';
+    if(!ms.length)return `<div class="sgrp-empty"><span>${esc(n)}</span><span class="cnt">няма машини</span></div>`;
+    const types={};ms.forEach(m=>{(types[m.type]=types[m.type]||[]).push(m)});
+    const tl=Object.keys(types).sort((a,b)=>types[b].length-types[a].length||a.localeCompare(b,'bg'));
+    const chip=t=>{const st=types[t].filter(m=>m.status==='спряна').length;return `<span class="chip c-n">${esc(t)}: <b>${types[t].length}</b>${st?` <span style="color:var(--bad)">(${st} спр.)</span>`:''}</span>`};
+    return `<details class="grp sgrp" data-k="${esc(key)}" ontoggle="siteTg(this)" ${openSites.has(key)?'open':''}>
+      <summary><div class="sg-top"><span>${n?esc(n):'<i>Без обект</i>'}</span><span class="cnt">${ms.length} бр.</span></div>
+        <div class="sumline">${tl.map(chip).join('')}</div></summary>
+      ${tl.map(t=>`<div class="sg-type">${esc(t)} · ${types[t].length}</div><div class="list">${types[t].sort((a,b)=>a.num.localeCompare(b.num)).map(mRow).join('')}</div>`).join('')}
+    </details>`}).join('')}</div></section>`;
 }
 function mSearch(q){
   if(!q)return '';
@@ -677,6 +736,91 @@ function saveUser(){
   if(clash){$('#uerr').textContent=`Този ПИН вече е на ${clash.name}. Избери друг.`;return}
   const id=view.id||null;
   act('saveUser',{id,name:n,role:r,pin:p},{err:'#uerr',ok:`${n} е записан. ПИН: ${p}`,then:()=>{if(id===me.id){pin=p;savePin()}go('people')}});
+}
+
+/* ---------- СПРАВКИ (ръководител и администратор) ---------- */
+const MONTHS=['януари','февруари','март','април','май','юни','юли','август','септември','октомври','ноември','декември'];
+const WD=['нд','пн','вт','ср','чт','пт','сб'];
+let rep={uid:'',month:'',data:null};
+function monthOpts(){const d=new Date();d.setDate(1);const o=[];for(let i=0;i<13;i++){o.push([`${d.getFullYear()}-${pad2(d.getMonth()+1)}`,`${MONTHS[d.getMonth()]} ${d.getFullYear()}`]);d.setMonth(d.getMonth()-1)}return o}
+const monthLabel=v=>{const p=String(v).split('-');return `${MONTHS[+p[1]-1]} ${p[0]}`};
+const diffOf=s=>s.startVal!=null&&s.endVal!=null?Math.round((s.endVal-s.startVal)*10)/10:null;
+const hoursOf=s=>s.endAt&&s.startAt?Math.round((s.endAt-s.startAt)/36e5*10)/10:null;
+function reportView(){
+  if(!rep.month)rep.month=monthOpts()[0][0];
+  const R={'машинист':0,'ръководител':1,'администратор':2};
+  const us=[...db.users].sort((a,b)=>(R[a.role]-R[b.role])||a.name.localeCompare(b.name,'bg'));
+  return `<section class="card"><h2>Справка за месец</h2>
+    <label for="ruser">Машинист<select id="ruser" onchange="rep.uid=this.value;rep.data=null;render()">
+      <option value="">— избери —</option><option value="*" ${rep.uid==='*'?'selected':''}>Всички машинисти</option>
+      ${us.map(u=>`<option value="${esc(u.id)}" ${u.id===rep.uid?'selected':''}>${esc(u.name)}${u.role!=='машинист'?' ('+esc(u.role)+')':''}</option>`).join('')}</select></label>
+    <label for="rmonth">Месец<select id="rmonth" onchange="rep.month=this.value;rep.data=null;render()">
+      ${monthOpts().map(([v,l])=>`<option value="${v}" ${v===rep.month?'selected':''}>${l}</option>`).join('')}</select></label>
+    <div id="reperr" class="err"></div>
+    <button class="btn pri" onclick="loadReport()">Покажи справката</button></section>
+  ${rep.data?reportBody():''}`;
+}
+function loadReport(uid){
+  if(busy)return;
+  uid=uid||$('#ruser').value;const month=$('#rmonth').value;
+  if(!uid){$('#reperr').textContent='Избери машинист.';return}
+  rep.uid=uid;rep.month=month;setBusy(true);
+  call('report',{uid,month}).then(r=>{setBusy(false);rep.data=r;render()}).catch(e=>{
+    setBusy(false);
+    if(e.message==='AUTH'){logout('Влез отново.');return}
+    const el=$('#reperr');if(el)el.textContent=e.message;else toast(e.message);
+  });
+}
+function sumUp(list){
+  const t={'мч':0,'км':0},per={},days=new Set();let rd=0;
+  list.forEach(s=>{
+    days.add(fmtD(s.startAt));
+    if(s.kind==='ремонт'){rd++;return}
+    const d=diffOf(s);if(d==null)return;
+    const u=s.unit||'мч';t[u]=Math.round(((t[u]||0)+d)*10)/10;
+    const p=per[s.num]||(per[s.num]={num:s.num,type:s.type,model:s.model,unit:u,sum:0,n:0});p.sum=Math.round((p.sum+d)*10)/10;p.n++;
+  });
+  return {t,per:Object.values(per).sort((a,b)=>a.num.localeCompare(b.num)),days:days.size,n:list.length,rd};
+}
+function totLine(t){return [t['мч']?`<b class="mono">${nf(t['мч'])} мч</b>`:'',t['км']?`<b class="mono">${nf(t['км'])} км</b>`:''].filter(Boolean).join(' · ')||'—'}
+function reportBody(){
+  const d=rep.data,list=d.shifts,all=d.uid==='*';
+  const who=all?'Всички машинисти':((db.users.find(u=>u.id===d.uid)||{}).name||(list[0]&&list[0].user)||'');
+  const head=`<div class="toolbar"><h2>${esc(who)} · ${monthLabel(d.month)}</h2>${list.length?`<button class="btn sm" onclick="reportCsv()">⬇ Свали за Excel</button>`:''}</div>`;
+  if(!list.length)return `<section class="card">${head}<div class="empty">Няма записани смени за този месец.</div></section>`;
+  if(all){
+    const by={};list.forEach(s=>{(by[s.userId]=by[s.userId]||{id:s.userId,name:s.user,l:[]}).l.push(s)});
+    const ppl=Object.values(by).sort((a,b)=>String(a.name).localeCompare(String(b.name),'bg'));
+    return `<section class="card">${head}<div class="small muted">${ppl.length} души · ${list.length} смени. Натисни човек за подробна справка.</div>
+      <div class="list">${ppl.map(p=>{const x=sumUp(p.l);return `<button class="row" onclick="loadReport('${esc(p.id)}')"><div class="main"><div class="t">${esc(p.name)}</div>
+        <div class="s">${x.days} дни · ${x.n} смени${x.rd?` · ${x.rd} ремонт`:''}</div></div><div class="stack">${totLine(x.t)}</div></button>`}).join('')}</div></section>`;
+  }
+  const x=sumUp(list);
+  const byDay=[];list.forEach(s=>{const k=fmtD(s.startAt),l=byDay[byDay.length-1];if(l&&l.k===k)l.l.push(s);else byDay.push({k,t:s.startAt,l:[s]})});
+  return `<section class="card">${head}
+    <dl class="kv"><dt>Дни на работа</dt><dd><b>${x.days}</b> (${x.n} смени${x.rd?`, от тях ${x.rd} помощ при ремонт`:''})</dd>
+      <dt>Общо</dt><dd>${totLine(x.t)}</dd></dl>
+    ${x.per.length?`<h3>По машини</h3><div>${x.per.map(p=>`<div class="sh"><span class="num">${esc(p.num)}</span><span class="w">${esc(p.type)} ${esc(p.model)}</span><span class="mono">${nf(p.sum)} ${p.unit}</span><span class="x">${p.n} смени</span></div>`).join('')}</div>`:''}</section>
+  <section class="card"><h3>По дни</h3>
+    ${byDay.map(g=>`<div class="rday"><div class="rdh">${WD[new Date(g.t).getDay()]} ${g.k}</div>
+      ${g.l.map(s=>{const df=diffOf(s),h=hoursOf(s);return `<div class="ev ${s.kind==='ремонт'?'warn':s.endAt==null?'bad':'ok'}">
+        <div class="h"><span class="num">${esc(s.num)}</span><span style="color:var(--ink);font-weight:600">${esc(s.type)} ${esc(s.model)}</span>${s.kind==='ремонт'?'<span class="chip c-warn">ремонт</span>':''}</div>
+        <div class="small">${fmtT(s.startAt)}–${s.endAt?fmtT(s.endAt):'…'}${h!=null?` (${nf(h)} ч)`:''}${s.site?` · 📍 ${esc(s.site)}`:''}</div>
+        <div class="mono small">${s.startVal!=null?nf(s.startVal):'—'} → ${s.endVal!=null?`${nf(s.endVal)} ${esc(s.unit)}`:s.endAt==null?'още работи':'?'}${df!=null?` · <b>+${nf(df)}</b>`:''}</div>
+        ${s.auto?'<div class="small muted">приключена автоматично</div>':''}</div>`}).join('')}</div>`).join('')}</section>`;
+}
+function reportCsv(){
+  const d=rep.data;if(!d||!d.shifts.length)return;
+  const q=v=>{const s=String(v??'');if(/^="\d+"$/.test(s))return s;return /[;"\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+  const n=v=>v==null?'':String(v).replace('.',',');
+  const rows=[['Дата','Ден','Машинист','Номер','Вид','Марка и модел','Обект','Начало','Край','Часове','Начално','Крайно','Разлика','Мярка','Бележка']];
+  d.shifts.forEach(s=>rows.push([fmtD(s.startAt),WD[new Date(s.startAt).getDay()],s.user,`="${s.num}"`,s.type,s.model,s.site,fmtT(s.startAt),s.endAt?fmtT(s.endAt):'',
+    n(hoursOf(s)),n(s.startVal),n(s.endVal),n(diffOf(s)),s.unit,[s.kind==='ремонт'?'помощ при ремонт':'',s.auto?'приключена автоматично':'',s.endAt==null?'още работи':''].filter(Boolean).join(', ')]));
+  const csv='﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n');
+  const who=d.uid==='*'?'vsichki':String((db.users.find(u=>u.id===d.uid)||{}).name||'mashinist').replace(/[\\/:*?"<>|\s]+/g,'_');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`spravka-${d.month}-${who}.csv`;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
 }
 
 /* ---------- АДМИН: обекти ---------- */
