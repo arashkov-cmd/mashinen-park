@@ -11,6 +11,8 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
@@ -194,6 +196,12 @@ let view={n:'home'}, entry='', op={q:'',repair:false,done:null}, confirmKey=null
 const SH_PAGE=30;
 try{pin=localStorage.getItem(KEY+'-pin')}catch(e){}
 function savePin(){try{pin?localStorage.setItem(KEY+'-pin',pin):localStorage.removeItem(KEY+'-pin')}catch(e){}}
+/* Последните данни се пазят на телефона, за да се покаже екранът веднага при отваряне (без ПИН-овете на хората). */
+function saveCache(){try{if(!db){localStorage.removeItem(KEY+'-db');return}
+  const c=Object.assign({},db);if(c.users)c.users=c.users.map(u=>({id:u.id,name:u.name,role:u.role}));
+  localStorage.setItem(KEY+'-db',JSON.stringify(c))}catch(e){}}
+function loadCache(){try{const c=JSON.parse(localStorage.getItem(KEY+'-db')||'null');return c&&c.me&&Array.isArray(c.machines)?c:null}catch(e){return null}}
+function setDb(r){db=r;me=r.me;saveCache()}
 
 const M=id=>db.machines.find(m=>m.id===id);
 const byNum=n=>db.machines.find(m=>m.num===String(n).trim());
@@ -239,7 +247,7 @@ function act(action,args,o={}){
   if(busy)return;
   setBusy(true);seq++;
   call(action,args).then(r=>{
-    setBusy(false);db=r;me=r.me;allShifts={};
+    setBusy(false);setDb(r);allShifts={};
     if(o.ok)toast(o.ok);
     o.then?o.then():render();
   }).catch(e=>{
@@ -259,7 +267,7 @@ function refresh(silent){
   const s=seq;
   call('load',{}).then(r=>{
     if(s!==seq||busy)return;
-    db=r;me=r.me;
+    setDb(r);
     if(!silent&&view.n==='machine')delete allShifts[view.id];
     if(!silent||canAuto())render();
     if(!silent)toast('Обновено.');
@@ -272,12 +280,24 @@ setInterval(()=>{if(document.visibilityState==='visible')refresh(true)},POLL_MS)
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh(true)});
 
 function boot(){
+  const cached=pin?loadCache():null;
+  if(cached){db=cached;me=cached.me}   // показваме веднага последното, после обновяваме
   render();
   if(pin){
-    call('login',{}).then(r=>{db=r;me=r.me;render()}).catch(e=>{
-      if(e.message==='AUTH'){pin=null;savePin()}else loadErr=e.message;
-      render();
+    const s=seq;
+    call('login',{}).then(r=>{
+      if(s!==seq||busy)return;          // междувременно е натиснал нещо — то вече върна нови данни
+      setDb(r);
+      if(!cached||canAuto())render();
+    }).catch(e=>{
+      if(e.message==='AUTH'){logout();return}
+      if(cached){toast(e.message);return}
+      loadErr=e.message;render();
     });
+  }else{
+    // събуждаме сървъра, докато човекът въвежда ПИН-а
+    if(/^https:\/\/script\.google\.com\/.+\/exec$/.test(API))
+      fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:'{"action":"ping"}'}).catch(()=>{});
   }
 }
 
@@ -306,7 +326,7 @@ function pinKey(k){
     const p=entry;
     setBusy(true);
     call('login',{},p).then(r=>{
-      setBusy(false);pin=p;savePin();db=r;me=r.me;entry='';
+      setBusy(false);pin=p;savePin();setDb(r);entry='';
       view={n:'home'};op={q:'',repair:false,done:null};render();
     }).catch(e=>{
       setBusy(false);entry='';
@@ -320,7 +340,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Backspace'){entry=entry.slice(0,-1);render()}
 });
 function logout(msg){
-  me=null;db=null;pin=null;savePin();entry='';loadErr='';view={n:'home'};
+  me=null;db=null;pin=null;savePin();saveCache();entry='';loadErr='';view={n:'home'};
   render();if(msg)toast(msg);
 }
 
