@@ -411,6 +411,7 @@ function render(){
      : isA()&&v==='people'?peopleView()
      : isA()&&v==='userForm'?userForm()
      : isA()&&v==='sites'?sitesView()
+     : isA()&&v==='shiftForm'?shiftForm()
      : v==='report'?reportView()
      : homeView();
   }
@@ -465,12 +466,24 @@ function opMatch(){
     <div id="oerr" class="err"></div>
     <button class="btn pri" onclick="startShift('${m.id}')">${rep?'Започвам ремонта':'Започвам'}</button>`;
 }
+/* Проверка за голям скок: при повече от това за една смяна питаме „Сигурен ли си?“ */
+const JUMP={'мч':24,'км':1500};
+let jumpVal=null,jumpAgain=null;
+function jumpOk(v,base,unit,sel,again){
+  const lim=JUMP[unit]||JUMP['мч'];
+  if(v-base<=lim||jumpVal===v)return true;
+  jumpAgain=again;
+  $(sel).innerHTML=`<div class="alert" style="font-weight:500">⚠ Това е с <b>${nf(Math.round((v-base)*10)/10)} ${esc(unit)}</b> повече от последното (${nf(base)} ${esc(unit)}). Провери цифрите на таблото.
+    <div class="btns" style="margin-top:10px"><button class="btn sm danger" onclick="jumpVal=${v};jumpAgain&&jumpAgain()">Да, вярно е</button><button class="btn sm" onclick="this.closest('.alert').remove()">Ще поправя</button></div></div>`;
+  return false;
+}
 function startShift(mid){
   const m=M(mid),v=readNum('#oval'),rep=op.repair,e=$('#oerr');
   if(!rep&&isNaN(v)){e.textContent='Въведи показанието от таблото.';return}
   if(!isNaN(v)&&v<(m.val||0)){e.textContent=`По-малко е от последното (${nf(m.val)} ${m.unit}). Провери цифрите.`;return}
+  if(!isNaN(v)&&!jumpOk(v,m.val||0,m.unit,'#oerr',()=>startShift(mid)))return;
   const site=$('#osite')?$('#osite').value:'';
-  act('start',{mid,val:isNaN(v)?'':v,site,kind:rep?'ремонт':'работа'},{err:'#oerr',ok:'Записано. Приятна работа!',then:()=>{op={q:'',repair:false,done:null};render()}});
+  act('start',{mid,val:isNaN(v)?'':v,site,kind:rep?'ремонт':'работа'},{err:'#oerr',ok:'Записано. Приятна работа!',then:()=>{jumpVal=null;op={q:'',repair:false,done:null};render()}});
 }
 function endView(sh){
   const m=M(sh.machineId),rep=sh.kind==='ремонт';
@@ -489,8 +502,9 @@ function endShift(){
   if(!rep&&isNaN(v)){$('#eerr').textContent='Въведи показанието от таблото.';return}
   const min=sh.startVal??m.val??0;
   if(!isNaN(v)&&v<min){$('#eerr').textContent=`Не може да е по-малко от ${nf(min)} ${m.unit}.`;return}
+  if(!isNaN(v)&&!jumpOk(v,min,m.unit,'#eerr',endShift))return;
   const done={num:m.num,type:m.type,unit:m.unit,from:sh.startVal,to:isNaN(v)?null:v};
-  act('end',{val:isNaN(v)?'':v},{err:'#eerr',then:()=>{op.done=done;render()}});
+  act('end',{val:isNaN(v)?'':v},{err:'#eerr',then:()=>{jumpVal=null;op.done=done;render()}});
 }
 
 /* ---------- НАЧАЛО: ръководител / администратор ---------- */
@@ -610,7 +624,7 @@ function shiftRow(s,m){
   const endTxt=s.endAt==null?'още работи':s.endVal!=null?`${nf(s.endVal)} ${m.unit}`:'?';
   const kick=s.endAt==null&&isA()?(confirmKey==='end'+s.id?` <button class="btn sm danger" onclick="act('endShift',{sid:'${s.id}'},{ok:'Смяната е приключена.'})">Да, приключи</button>`:` <button class="btn sm" onclick="confirmKey='end${s.id}';render()">Приключи</button>`):'';
   return `<div class="sh"><span class="d">${fmtD(s.startAt)}</span><span class="w">${esc(s.user||'')}</span>${s.kind==='ремонт'?'<span class="chip c-warn">ремонт</span>':'<span></span>'}
-    <span class="v">${s.startVal!=null?nf(s.startVal):'—'} → ${endTxt}${diff}${kick}</span>
+    <span class="v">${s.startVal!=null?nf(s.startVal):'—'} → ${endTxt}${diff}${kick}${isA()?` <button class="btn sm" onclick="go('shiftForm',{mid:'${m.id}',sid:'${s.id}'})">Поправи</button>`:''}</span>
     ${s.site?`<span class="x">📍 ${esc(s.site)}</span>`:''}
     ${s.auto?`<span class="x">приключена автоматично${s.endVal==null&&s.endAt!=null?' · крайното ще се попълни при следващото качване':''}</span>`:''}</div>`;
 }
@@ -618,6 +632,40 @@ function loadShifts(id){
   loadingShifts[id]=true;
   call('shiftsOf',{mid:id}).then(r=>{loadingShifts[id]=false;allShifts[id]=r.shifts;allMoves[id]=r.moves||[];if(view.n==='machine'&&view.id===id&&canAuto())render()})
     .catch(e=>{loadingShifts[id]=false;allShifts[id]=[];toast(e.message);render()});
+}
+
+/* ---------- АДМИН: поправка на смяна ---------- */
+function shiftForm(){
+  const m=M(view.mid),s=(allShifts[view.mid]||[]).find(x=>x.id===view.sid);
+  const back=`<button class="back" onclick="go('machine',{id:'${esc(view.mid)}'})">← Назад</button>`;
+  if(!m||!s)return back+`<div class="empty">Смяната не е намерена. Върни се в досието и опитай пак.</div>`;
+  return `${back}<section class="card"><h2>Поправи смяна</h2>
+    <div class="small muted">${fmt(s.startAt)} · <b style="color:var(--ink)">${esc(s.user||'')}</b>${s.auto?' · приключена автоматично':''}</div>
+    <label for="snum">Номер на машината<input id="snum" class="mono" inputmode="numeric" maxlength="5" value="${esc(s.num)}" autocomplete="off"
+      oninput="this.value=this.value.replace(/\\D/g,'');const x=byNum(this.value);$('#snm').textContent=x?x.type+' '+(x.model||'')+' · '+(x.unit==='км'?'километри':'моточасове'):'—'"></label>
+    <div id="snm" class="small muted">${esc(m.type)} ${esc(m.model||'')} · ${m.unit==='км'?'километри':'моточасове'}</div>
+    <label for="skind">Вид<select id="skind"><option value="работа" ${s.kind!=='ремонт'?'selected':''}>Работа</option><option value="ремонт" ${s.kind==='ремонт'?'selected':''}>Помощ при ремонт</option></select></label>
+    <label for="ssite">Обект<select id="ssite">${siteOptions(s.site)}</select></label>
+    <label for="ssv">Начално показание<input id="ssv" class="big-in" inputmode="decimal" value="${s.startVal??''}" autocomplete="off"></label>
+    ${s.endAt!=null?`<label for="sev">Крайно показание<input id="sev" class="big-in" inputmode="decimal" value="${s.endVal??''}" autocomplete="off"></label>`
+      :`<div class="small muted">Смяната още не е приключена — крайното се въвежда при приключване.</div>`}
+    <div class="small muted">Ако това е последната смяна на машината, показанието на машината също ще се поправи.</div>
+    <div id="sferr" class="err"></div>
+    <div class="btns"><button class="btn pri" onclick="saveShiftFix()">Запази</button>
+      ${confirmKey==='del'?`<button class="btn danger" onclick="delShiftGo()">Да, изтрий смяната</button>`:`<button class="btn" onclick="confirmKey='del';render()">Изтрий смяната</button>`}</div></section>`;
+}
+function saveShiftFix(){
+  const g=x=>$(x)?$(x).value.trim().replace(',','.'):'';
+  const num=g('#snum'),kind=$('#skind').value,sv=g('#ssv'),ev=g('#sev'),e=$('#sferr');
+  if(!byNum(num)){e.textContent='Няма машина с номер '+num+'.';return}
+  if(kind==='работа'&&sv===''){e.textContent='Въведи началното показание.';return}
+  if(sv!==''&&ev!==''&&Number(ev)<Number(sv)){e.textContent='Крайното не може да е по-малко от началното.';return}
+  act('editShift',{sid:view.sid,num,kind,site:$('#ssite').value,startVal:sv,endVal:ev},
+    {err:'#sferr',ok:'Смяната е поправена.',then:()=>{const x=byNum(num);go('machine',{id:x?x.id:view.mid})}});
+}
+function delShiftGo(){
+  const mid=view.mid;
+  act('delShift',{sid:view.sid},{err:'#sferr',ok:'Смяната е изтрита.',then:()=>go('machine',{id:mid})});
 }
 
 /* ---------- АДМИН: формуляри ---------- */
