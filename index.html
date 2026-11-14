@@ -545,6 +545,7 @@ function homeView(){
   ${(()=>{const due=db.machines.filter(m=>{const s=svc(m);return s&&s.due}).sort((a,b)=>svc(a).left-svc(b).left);
     return due.length?`<section class="card"><h3>За обслужване · ${due.length}</h3><div class="list">${due.map(mRow).join('')}</div></section>`:''})()}
   ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
+  ${db.machines.length?`<button class="btn" onclick="machinesCsv()">⬇ Всички машини за Excel</button>`:''}
   ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
 }
 /* Машини по обекти: за всеки обект колко машини има от всеки вид. Натискаш обект → списък по видове. */
@@ -625,7 +626,9 @@ function machineView(id){
   const cur=openShiftOn(id);
   const stBtn=A?(confirmKey==='st'?`<div class="btns"><button class="btn sm ${m.status==='спряна'?'pri':'danger'}" onclick="act('setStatus',{mid:'${id}',status:'${m.status==='спряна'?'работи':'спряна'}'},{ok:'Състоянието е сменено.'})">Да, ${m.status==='спряна'?'работи':'спряна е'}</button><button class="btn sm" onclick="confirmKey=null;render()">Отказ</button></div>`
       :`<button class="btn sm" onclick="confirmKey='st';render()">${m.status==='спряна'?'Отбележи: работи':'Отбележи: спряна'}</button>`):'';
-  return `<button class="back" onclick="go('home',{type:view.type})">← Назад</button>
+  const ask=A&&view.ask&&m.status==='спряна'?`<div class="okbox" style="display:flex;flex-direction:column;gap:10px">✓ Няма повече неотстранени повреди. Машината пак ли работи?
+    <div class="btns"><button class="btn pri" onclick="view.ask=0;act('setStatus',{mid:'${id}',status:'работи'},{ok:'Отбелязано: машината работи.'})">Да, работи</button><button class="btn" onclick="view.ask=0;render()">Не, още е спряна</button></div></div>`:'';
+  return `<button class="back" onclick="go('home',{type:view.type})">← Назад</button>${ask}
   <section class="card"><div class="toolbar"><div class="mhead"><span class="mnum">${esc(m.num)}</span><span class="muted">${esc(m.type)} · ${esc(m.model||'')}</span></div>${stChip(m.status)}</div>
     <div class="meter"><span class="v">${nf(m.val)}</span><span class="u">${unitL(m.unit)}</span></div>
     <dl class="kv"><dt>Къде е</dt><dd><b>${esc(m.location||'—')}</b></dd>
@@ -762,7 +765,8 @@ function saveDamage(){
   const t=$('#dtext').value.trim();if(!t){$('#derr').textContent='Опиши повредата.';return}
   const mid=view.mid,stop=$('#dstop')&&$('#dstop').checked;
   act('saveDamage',{id:view.did||null,mid,date:$('#ddate').value,text:t,status:$('#dst').value,service:$('#dsvc').value.trim()},
-    {err:'#derr',ok:'Повредата е записана.',then:()=>{if(stop){act('setStatus',{mid,status:'спряна'},{then:()=>go('machine',{id:mid})})}else go('machine',{id:mid})}});
+    {err:'#derr',ok:'Повредата е записана.',then:()=>{if(stop){act('setStatus',{mid,status:'спряна'},{then:()=>go('machine',{id:mid})})}
+      else{const m=M(mid);go('machine',{id:mid,ask:m&&m.status==='спряна'&&!openDmg(mid).length?1:0})}}});
 }
 function repairForm(){
   const m=M(view.mid);if(!m)return homeView();
@@ -841,22 +845,26 @@ function reportView(){
   if(!rep.month)rep.month=monthOpts()[0][0];
   const R={'машинист':0,'ръководител':1,'администратор':2};
   const us=[...db.users].sort((a,b)=>(R[a.role]-R[b.role])||a.name.localeCompare(b.name,'bg'));
+  const kind=rep.kind||'person';
   return `<section class="card"><h2>Справка за месец</h2>
-    <label for="ruser">Машинист<select id="ruser" onchange="rep.uid=this.value;rep.data=null;render()">
+    <div class="segbar"><button class="${kind==='person'?'on':''}" onclick="rep.kind='person';rep.data=null;render()">По машинист</button><button class="${kind==='machine'?'on':''}" onclick="rep.kind='machine';rep.data=null;render()">По машина</button></div>
+    ${kind==='person'?`<label for="ruser">Машинист<select id="ruser" onchange="rep.uid=this.value;rep.data=null;render()">
       <option value="">— избери —</option><option value="*" ${rep.uid==='*'?'selected':''}>Всички машинисти</option>
-      ${us.map(u=>`<option value="${esc(u.id)}" ${u.id===rep.uid?'selected':''}>${esc(u.name)}${u.role!=='машинист'?' ('+esc(u.role)+')':''}</option>`).join('')}</select></label>
+      ${us.map(u=>`<option value="${esc(u.id)}" ${u.id===rep.uid?'selected':''}>${esc(u.name)}${u.role!=='машинист'?' ('+esc(u.role)+')':''}</option>`).join('')}</select></label>`:''}
     <label for="rmonth">Месец<select id="rmonth" onchange="rep.month=this.value;rep.data=null;render()">
       ${monthOpts().map(([v,l])=>`<option value="${v}" ${v===rep.month?'selected':''}>${l}</option>`).join('')}</select></label>
     <div id="reperr" class="err"></div>
     <button class="btn pri" onclick="loadReport()">Покажи справката</button></section>
-  ${rep.data?reportBody():''}`;
+  ${rep.data?(rep.data.kind==='machine'?machineReportBody():reportBody()):''}`;
 }
 function loadReport(uid){
   if(busy)return;
-  uid=uid||$('#ruser').value;const month=$('#rmonth').value;
+  const mk=rep.kind==='machine'&&!uid;
+  uid=mk?'*':uid||($('#ruser')?$('#ruser').value:'');const month=$('#rmonth').value;
+  if(uid&&uid!=='*')rep.kind='person';
   if(!uid){$('#reperr').textContent='Избери машинист.';return}
   rep.uid=uid;rep.month=month;setBusy(true);
-  call('report',{uid,month}).then(r=>{setBusy(false);rep.data=r;render()}).catch(e=>{
+  call('report',{uid,month}).then(r=>{setBusy(false);r.kind=mk?'machine':'person';rep.data=r;render()}).catch(e=>{
     setBusy(false);
     if(e.message==='AUTH'){logout('Влез отново.');return}
     const el=$('#reperr');if(el)el.textContent=e.message;else toast(e.message);
@@ -899,6 +907,56 @@ function reportBody(){
         <div class="small">${fmtT(s.startAt)}–${s.endAt?fmtT(s.endAt):'…'}${h!=null?` (${nf(h)} ч)`:''}${s.site?` · 📍 ${esc(s.site)}`:''}</div>
         <div class="mono small">${s.startVal!=null?nf(s.startVal):'—'} → ${s.endVal!=null?`${nf(s.endVal)} ${esc(s.unit)}`:s.endAt==null?'още работи':'?'}${df!=null?` · <b>+${nf(df)}</b>`:''}</div>
         ${s.auto?'<div class="small muted">приключена автоматично</div>':''}</div>`}).join('')}</div>`).join('')}</section>`;
+}
+/* Справка по машина: колко дни е работила всяка машина и колко мч/км е изкарала. */
+function machineRows(){
+  const d=rep.data,[y,mo]=d.month.split('-').map(Number),now=new Date();
+  const dim=new Date(y,mo,0).getDate();
+  const span=(now.getFullYear()===y&&now.getMonth()+1===mo)?now.getDate():new Date(y,mo-1,1)>now?0:dim;
+  const by={};d.shifts.forEach(s=>{(by[s.num]=by[s.num]||[]).push(s)});
+  const rows=db.machines.map(m=>{
+    const l=by[m.num]||[],work=l.filter(s=>s.kind!=='ремонт');
+    let sum=0;work.forEach(s=>{const x=diffOf(s);if(x!=null)sum+=x});
+    return {m,days:new Set(work.map(s=>fmtD(s.startAt))).size,rd:new Set(l.filter(s=>s.kind==='ремонт').map(s=>fmtD(s.startAt))).size,
+      sum:Math.round(sum*10)/10,n:l.length};
+  }).sort((a,b)=>a.days-b.days||a.m.type.localeCompare(b.m.type,'bg')||a.m.num.localeCompare(b.m.num));
+  return {rows,span,dim};
+}
+function machineReportBody(){
+  const {rows,span,dim}=machineRows(),d=rep.data;
+  const idle=rows.filter(r=>!r.days).length,t={'мч':0,'км':0};
+  rows.forEach(r=>{t[r.m.unit]=Math.round(((t[r.m.unit]||0)+r.sum)*10)/10});
+  return `<section class="card"><div class="toolbar"><h2>Машини · ${monthLabel(d.month)}</h2>${rows.length?`<button class="btn sm" onclick="machineReportCsv()">⬇ Свали за Excel</button>`:''}</div>
+    <dl class="kv"><dt>Машини</dt><dd><b>${rows.length}</b>${idle?` · <span style="color:var(--bad);font-weight:600">${idle} не са работили</span>`:''}</dd>
+      <dt>Общо</dt><dd>${totLine(t)}</dd><dt>Период</dt><dd>${span} дни${span<dim?' (до днес)':''}</dd></dl>
+    <div class="small muted">Най-малко работилите са отгоре. Натисни машина за досието ѝ.</div>
+    <div class="list">${rows.map(r=>`<button class="row" onclick="go('machine',{id:'${r.m.id}'})"><span class="num">${esc(r.m.num)}</span>
+      <div class="main"><div class="t">${esc(r.m.type)} ${esc(r.m.model||'')}</div><div class="s" style="white-space:normal">работила ${r.days} от ${span} дни · ${esc(r.m.location||'—')}</div></div>
+      <div class="stack">${r.days?`<b class="mono">${nf(r.sum)} ${esc(r.m.unit)}</b>`:'<span class="chip c-bad">не е работила</span>'}${r.rd?`<span class="chip c-warn">ремонт ${r.rd} д.</span>`:''}</div></button>`).join('')}</div></section>`;
+}
+function downloadCsv(rows,name){
+  const q=v=>{const s=String(v??'');if(/^="\d+"$/.test(s))return s;return /[;"\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+  const csv='﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
+}
+const cn=v=>v==null?'':String(v).replace('.',',');
+function machineReportCsv(){
+  const {rows,span}=machineRows();
+  downloadCsv([['Номер','Вид','Марка и модел','Обект сега','Дни работа','Дни в периода','Дни помощ при ремонт','Общо','Мярка','Смени'],
+    ...rows.map(r=>[`="${r.m.num}"`,r.m.type,r.m.model,r.m.location,r.days,span,r.rd,cn(r.sum),r.m.unit,r.n])],`mashini-${rep.data.month}.csv`);
+}
+/* Целият машинен парк за Excel (инвентар). */
+function machinesCsv(){
+  const rows=[...db.machines].sort((a,b)=>a.type.localeCompare(b.type,'bg')||a.num.localeCompare(b.num)).map(m=>{
+    const ds=db.damages.filter(d=>d.machineId===m.id&&d.status!=='поправена'),sv=svc(m),sh=openShiftOn(m.id);
+    return [`="${m.num}"`,m.type,m.model,m.unit==='км'?'километри':'моточасове',cn(m.val),m.location,m.status,
+      ds.map(d=>`${fmtD(d.at)} ${d.text} (${d.status})`).join(' | '),
+      sv&&!sv.none?cn(sv.last.val):'',sv&&!sv.none?cn(sv.next):'',sv&&!sv.none?cn(sv.left):sv&&sv.none?'няма записано':'',sh?sh.user:''];
+  });
+  downloadCsv([['Номер','Вид','Марка и модел','Отчита','Показание','Обект','Състояние','Отворени повреди','Последно обслужване (мч)','Следващо обслужване (мч)','Остават до обслужване (мч)','Сега на машината'],...rows],
+    `mashinen-park-${iso()}.csv`);
 }
 function reportCsv(){
   const d=rep.data;if(!d||!d.shifts.length)return;
