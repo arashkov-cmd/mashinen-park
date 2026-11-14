@@ -603,9 +603,22 @@ function faultCard(m){
 function faultsView(){
   const f=faultLists(),tab=view.tab==='stop'?'stop':'dmg',list=tab==='stop'?f.stopped:f.withD;
   return `<button class="back" onclick="go('home')">← Назад</button>
+  <div class="toolbar"><h2>${tab==='dmg'?'С повреди':'Спрени'}</h2>${list.length?`<button class="btn sm" onclick="faultsCsv()">⬇ Свали за Excel</button>`:''}</div>
   <div class="segbar"><button class="${tab==='dmg'?'on':''}" onclick="view.tab='dmg';render()">С повреди · ${f.withD.length}</button><button class="${tab==='stop'?'on':''}" onclick="view.tab='stop';render()">Спрени · ${f.stopped.length}</button></div>
   <div class="small muted">${tab==='dmg'?'Машини с неотстранена повреда (повредена или в ремонт). Най-отдавна повредените са отгоре.':'Машини, отбелязани като спрени. Най-отдавна спрелите са отгоре.'}</div>
   ${list.length?`<div class="list">${list.map(faultCard).join('')}</div>`:`<div class="okbox">${tab==='dmg'?'Няма машини с повреди.':'Няма спрени машини.'}</div>`}`;
+}
+function faultsCsv(){
+  const f=faultLists(),tab=view.tab==='stop'?'stop':'dmg',list=tab==='stop'?f.stopped:f.withD,rows=[];
+  const days=t=>Math.max(0,Math.floor((today0()-new Date(t).setHours(0,0,0,0))/864e5));
+  list.forEach(m=>{
+    const base=[`="${m.num}"`,m.type,m.model,m.location,m.status];
+    const ds=openDmg(m.id);
+    if(!ds.length)rows.push([...base,'','','няма записана повреда','','']);
+    ds.forEach(d=>rows.push([...base,fmtD(d.at),d.status,d.text,d.service||'',days(d.at)]));
+  });
+  downloadCsv([['Номер','Вид','Марка и модел','Обект','Състояние','Дата на повредата','Статус на повредата','Повреда','Сервиз','Дни от повредата'],...rows],
+    `${tab==='stop'?'spreni':'povredi'}-${iso()}.csv`);
 }
 function mSearch(q){
   if(!q)return '';
