@@ -746,7 +746,12 @@ function machineForm(){
     <div class="btns">${['прехвърлена','продадена','бракувана'].map(r=>`<button class="btn" onclick="act('retireMachine',{id:'${m.id}',reason:'${r}'},{err:'#rmerr',ok:'Машината е изведена от парка.',then:()=>go('home')})">${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>
     <div class="small muted">Машината изчезва от всички списъци и машинистите не могат да я избират. Историята ѝ остава в справките. Може да се върне от „Изведени от парка“ най-долу на началния екран.</div>
     <div id="rmerr" class="err"></div>
-    <div class="btns"><button class="btn sm danger" onclick="act('delMachine',{id:'${m.id}'},{err:'#rmerr',ok:'Машината е изтрита.',then:()=>go('home')})">Изтрий напълно (въведена по грешка)</button>
+    <details class="grp" style="border-color:var(--bad)"><summary style="font-family:var(--f-body);font-size:.95rem;color:var(--bad)">Изтрий напълно (пробна или въведена по грешка)</summary>
+      <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px">
+      <div class="small">Изтрива машината <b>и цялата ѝ история</b> — смени, повреди, ремонти. Не може да се върне. За истински машини ползвай причините горе.</div>
+      <label for="delconf">Напиши номера ${esc(m.num)} за потвърждение<input id="delconf" class="mono" inputmode="numeric" maxlength="5" autocomplete="off"></label>
+      <button class="btn danger" onclick="if($('#delconf').value.trim()!=='${esc(m.num)}'){$('#rmerr').textContent='Напиши точно номера ${esc(m.num)}.';return}act('delMachine',{id:'${m.id}',confirm:$('#delconf').value.trim()},{err:'#rmerr',ok:'Машината и историята ѝ са изтрити.',then:()=>go('home')})">Изтрий завинаги</button></div></details>
+    <div class="btns">
       <button class="btn sm" onclick="confirmKey=null;render()">Отказ</button></div></section>`:''}`;
 }
 function saveMachine(){
