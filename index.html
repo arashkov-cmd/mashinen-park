@@ -473,7 +473,7 @@ function opMatch(){
   const rep=op.repair;
   return card+(rep?`<div class="chip c-warn" style="align-self:flex-start">Ремонт</div>`:'')+`
     ${rep?'':`<label for="osite">Къде е машината
-      <select id="osite">${sites.length?'':'<option value="">—</option>'}${sites.map(s=>`<option ${s===m.location?'selected':''}>${esc(s)}</option>`).join('')}</select></label>`}
+      <select id="osite">${!sites.length?'<option value="">—</option>':!m.location?'<option value="" selected>— избери къде е —</option>':''}${sites.map(s=>`<option ${s===m.location?'selected':''}>${esc(s)}</option>`).join('')}</select></label>`}
     <label for="oval">${unitIn(m.unit)} сега${rep?' (по желание)':''}
       <input id="oval" class="big-in" inputmode="decimal" placeholder="${m.val||0}" autocomplete="off"></label>
     <div id="oerr" class="err"></div>
@@ -496,6 +496,7 @@ function startShift(mid){
   if(!isNaN(v)&&v<(m.val||0)){e.textContent=`По-малко е от последното (${nf(m.val)} ${m.unit}). Провери цифрите.`;return}
   if(!isNaN(v)&&!jumpOk(v,m.val||0,m.unit,'#oerr',()=>startShift(mid)))return;
   const site=$('#osite')?$('#osite').value:'';
+  if(!rep&&!site&&db.sites.length){e.textContent='Избери къде е машината.';return}
   act('start',{mid,val:isNaN(v)?'':v,site,kind:rep?'ремонт':'работа'},{err:'#oerr',ok:'Записано. Приятна работа!',then:()=>{jumpVal=null;op={q:'',repair:false,done:null};render()}});
 }
 function endView(sh){
