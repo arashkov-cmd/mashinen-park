@@ -170,6 +170,18 @@ details.sgrp .sumline .chip{font-family:var(--f-body);font-size:.8rem;font-weigh
 .sg-type{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 16px 4px}
 .sgrp-empty{display:flex;justify-content:space-between;gap:10px;padding:10px 16px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:.95rem}
 .sgrp-empty .cnt{font-size:.85rem}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:inherit;color:var(--ink);cursor:pointer;text-align:left;min-width:0}
+.tile .tn{font-family:var(--f-mono);font-size:2rem;font-weight:700;line-height:1.1}
+.tile .tl{font-weight:600;color:var(--muted)}
+.tile.t-warn{border-color:var(--warn);background:var(--warn-soft)}.tile.t-warn .tn,.tile.t-warn .tl{color:var(--warn)}
+.tile.t-bad{border-color:var(--bad);background:var(--bad-soft)}.tile.t-bad .tn,.tile.t-bad .tl{color:var(--bad)}
+.segbar{display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.segbar button{font:inherit;font-weight:600;border:0;border-radius:9px;padding:12px 8px;background:none;color:var(--muted);cursor:pointer;min-width:0}
+.segbar button.on{background:var(--ink);color:var(--bg)}
+.fcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:10px}
+.fcard>.row{border-color:transparent;background:var(--bg)}
+.fcard .ev{margin:0 6px 4px}
 .rday{display:flex;flex-direction:column;gap:8px;padding:6px 0 10px;border-bottom:1px solid var(--line)}
 .rday:last-child{border-bottom:0}
 .rdh{font-family:var(--f-display);font-size:1.05rem;letter-spacing:.02em}
@@ -413,6 +425,7 @@ function render(){
      : isA()&&v==='sites'?sitesView()
      : isA()&&v==='shiftForm'?shiftForm()
      : v==='report'?reportView()
+     : v==='faults'?faultsView()
      : homeView();
   }
   app.innerHTML=header()+`<main class="wrap">${b}</main>`+nav();
@@ -510,7 +523,6 @@ function endShift(){
 /* ---------- НАЧАЛО: ръководител / администратор ---------- */
 function homeView(){
   const types=[...new Set(db.machines.map(m=>m.type))].sort((a,b)=>a.localeCompare(b,'bg'));
-  const stopped=db.machines.filter(m=>m.status==='спряна').sort((a,b)=>a.num.localeCompare(b.num));
   const t=view.type||'';
   let typeBlock='';
   if(t){
@@ -521,7 +533,7 @@ function homeView(){
       <div class="sumline">${Object.entries(per).map(([k,n])=>`<span class="chip c-n">${esc(k)}: ${n}</span>`).join('')}</div>
       <div class="list">${ms.map(mRow).join('')}</div>`;
   }
-  return `<section class="card"><h2>Търси машина</h2>
+  return `${faultTiles()}<section class="card"><h2>Търси машина</h2>
     <label for="mq">Вътрешен номер
       <input id="mq" class="numin" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0000" autocomplete="off" oninput="this.value=this.value.replace(/\\D/g,'');$('#mres').innerHTML=mSearch(this.value)" onkeydown="if(event.key==='Enter'){const m=byNum(this.value);if(m)go('machine',{id:m.id})}"></label>
     <div id="mres" class="list"></div></section>
@@ -531,7 +543,6 @@ function homeView(){
     ${typeBlock}</section>
   ${(()=>{const due=db.machines.filter(m=>{const s=svc(m);return s&&s.due}).sort((a,b)=>svc(a).left-svc(b).left);
     return due.length?`<section class="card"><h3>За обслужване · ${due.length}</h3><div class="list">${due.map(mRow).join('')}</div></section>`:''})()}
-  ${stopped.length?`<section class="card"><h3>Спрени машини · ${stopped.length}</h3><div class="list">${stopped.map(mRow).join('')}</div></section>`:''}
   ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
   ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
 }
@@ -556,6 +567,37 @@ function sitesSummary(){
         <div class="sumline">${tl.map(chip).join('')}</div></summary>
       ${tl.map(t=>`<div class="sg-type">${esc(t)} · ${types[t].length}</div><div class="list">${types[t].sort((a,b)=>a.num.localeCompare(b.num)).map(mRow).join('')}</div>`).join('')}
     </details>`}).join('')}</div></section>`;
+}
+/* ---------- ПОВРЕДИ И СПРЕНИ (ръководител и администратор) ---------- */
+const openDmg=mid=>db.damages.filter(d=>d.machineId===mid&&d.status!=='поправена').sort((a,b)=>a.at-b.at);
+function faultLists(){
+  const withD=db.machines.filter(m=>openDmg(m.id).length);
+  const stopped=db.machines.filter(m=>m.status==='спряна');
+  const since=m=>{const d=openDmg(m.id)[0];return d?d.at:Infinity};
+  const sort=l=>l.sort((a,b)=>since(a)-since(b)||a.num.localeCompare(b.num));   // най-отдавна повредените отгоре
+  return {withD:sort(withD),stopped:sort(stopped)};
+}
+function faultTiles(){
+  const f=faultLists();
+  return `<div class="tiles">
+    <button class="tile ${f.withD.length?'t-warn':''}" onclick="go('faults',{tab:'dmg'})"><span class="tn">${f.withD.length}</span><span class="tl">С повреди</span></button>
+    <button class="tile ${f.stopped.length?'t-bad':''}" onclick="go('faults',{tab:'stop'})"><span class="tn">${f.stopped.length}</span><span class="tl">Спрени</span></button></div>`;
+}
+function daysAgo(t){const n=Math.floor((today0()-new Date(t).setHours(0,0,0,0))/864e5);return n<=0?'днес':n===1?'от вчера':`от ${n} дни`}
+function today0(){const d=new Date();d.setHours(0,0,0,0);return d.getTime()}
+function faultCard(m){
+  const ds=openDmg(m.id);
+  return `<div class="fcard">${mRow(m)}
+    ${ds.length?ds.map(d=>`<div class="ev ${d.status==='в ремонт'?'warn':'bad'}"><div class="h"><span class="chip ${DCLS[d.status]||'c-n'}">${esc(d.status)}</span><span>${fmtD(d.at)} · ${daysAgo(d.at)}</span></div>
+      <div>${esc(d.text)}</div>${d.service?`<div class="small muted">Сервиз: <b style="color:var(--ink)">${esc(d.service)}</b></div>`:''}</div>`).join('')
+      :`<div class="small muted" style="padding:0 4px">Няма записана повреда${isA()?' — добави я от досието.':'.'}</div>`}</div>`;
+}
+function faultsView(){
+  const f=faultLists(),tab=view.tab==='stop'?'stop':'dmg',list=tab==='stop'?f.stopped:f.withD;
+  return `<button class="back" onclick="go('home')">← Назад</button>
+  <div class="segbar"><button class="${tab==='dmg'?'on':''}" onclick="view.tab='dmg';render()">С повреди · ${f.withD.length}</button><button class="${tab==='stop'?'on':''}" onclick="view.tab='stop';render()">Спрени · ${f.stopped.length}</button></div>
+  <div class="small muted">${tab==='dmg'?'Машини с неотстранена повреда (повредена или в ремонт). Най-отдавна повредените са отгоре.':'Машини, отбелязани като спрени. Най-отдавна спрелите са отгоре.'}</div>
+  ${list.length?`<div class="list">${list.map(faultCard).join('')}</div>`:`<div class="okbox">${tab==='dmg'?'Няма машини с повреди.':'Няма спрени машини.'}</div>`}`;
 }
 function mSearch(q){
   if(!q)return '';
