@@ -170,6 +170,9 @@ details.sgrp .sumline .chip{font-family:var(--f-body);font-size:.8rem;font-weigh
 .sg-type{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 16px 4px}
 .sgrp-empty{display:flex;justify-content:space-between;gap:10px;padding:10px 16px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:.95rem}
 .sgrp-empty .cnt{font-size:.85rem}
+.chipbar{display:flex;flex-wrap:wrap;gap:6px}
+.chipbar button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:var(--bg);color:var(--muted);cursor:pointer}
+.chipbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:inherit;color:var(--ink);cursor:pointer;text-align:left;min-width:0}
 .tile .tn{font-family:var(--f-mono);font-size:2rem;font-weight:700;line-height:1.1}
@@ -426,6 +429,7 @@ function render(){
      : isA()&&v==='shiftForm'?shiftForm()
      : v==='report'?reportView()
      : v==='faults'?faultsView()
+     : v==='retired'?retiredView()
      : homeView();
   }
   app.innerHTML=header()+`<main class="wrap">${b}</main>`+nav();
@@ -546,11 +550,7 @@ function homeView(){
     return due.length?`<section class="card"><h3>За обслужване · ${due.length}</h3><div class="list">${due.map(mRow).join('')}</div></section>`:''})()}
   ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
   ${db.machines.length?`<button class="btn" onclick="machinesCsv()">⬇ Всички машини за Excel</button>`:''}
-  ${isA()&&db.retired&&db.retired.length?`<details class="grp" ${retOpen?'open':''} ontoggle="retOpen=this.open"><summary>Изведени от парка<span class="cnt">${db.retired.length}</span></summary><div class="list">
-    ${[...db.retired].sort((a,b)=>a.num.localeCompare(b.num)).map(m=>`<div class="row" style="cursor:default"><span class="num">${esc(m.num)}</span>
-      <div class="main"><div class="t">${esc(m.type)} ${esc(m.model||'')}</div><div class="s" style="white-space:normal">${esc(m.retired||'изведена')}</div></div>
-      ${confirmKey==='rs'+m.id?`<button class="btn sm pri" onclick="act('restoreMachine',{id:'${m.id}'},{ok:'Машината е върната в парка.'})">Да, върни</button>`
-        :`<button class="btn sm" onclick="confirmKey='rs${m.id}';render()">Върни</button>`}</div>`).join('')}</div></details>`:''}
+  ${db.retired&&db.retired.length?`<button class="btn" onclick="go('retired')">Изведени от парка · ${db.retired.length}</button>`:''}
   ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
 }
 /* Машини по обекти: за всеки обект колко машини има от всеки вид. Натискаш обект → списък по видове. */
@@ -637,7 +637,7 @@ function machineView(id){
   return `<button class="back" onclick="go('home',{type:view.type})">← Назад</button>${ask}
   <section class="card"><div class="toolbar"><div class="mhead"><span class="mnum">${esc(m.num)}</span><span class="muted">${esc(m.type)} · ${esc(m.model||'')}</span></div>${stChip(m.status)}</div>
     <div class="meter"><span class="v">${nf(m.val)}</span><span class="u">${unitL(m.unit)}</span></div>
-    <dl class="kv"><dt>Къде е</dt><dd><b>${esc(m.location||'—')}</b></dd>
+    <dl class="kv"><dt>Къде е</dt><dd><b>${esc(m.location||'—')}</b></dd>${m.from?`<dt>Взета от</dt><dd>${esc(m.from)}</dd>`:''}
     ${(()=>{const s=svc(m);if(!s)return '';
       if(s.none)return `<dt>Обслужване</dt><dd><span class="muted">няма записано обслужване</span></dd>`;
       return `<dt>Обслужване</dt><dd>следващото при <b class="mono">${nf(s.next)} мч</b> · ${s.over?`<span style="color:var(--bad);font-weight:600">просрочено с ${nf(-s.left)} мч</span>`:s.due?`<span style="color:var(--warn);font-weight:600">след ${nf(s.left)} мч</span>`:`след ${nf(s.left)} мч`}</dd>`})()}
@@ -737,14 +737,18 @@ function machineForm(){
     <label for="funit">Отчита<select id="funit"><option value="мч" ${m?.unit!=='км'?'selected':''}>Моточасове</option><option value="км" ${m?.unit==='км'?'selected':''}>Километри</option></select></label>
     <label for="fval">Показание сега<input id="fval" class="big-in" inputmode="decimal" value="${m?m.val??'':''}" placeholder="0"></label>
     <label for="floc">Къде е<select id="floc">${siteOptions(m?.location)}</select></label>
+    <label for="ffrom">Взета от (фирма)<input id="ffrom" value="${esc(m?.from)}" placeholder="празно = нова машина" autocomplete="off"></label>
     <label for="fst">Състояние<select id="fst"><option ${m?.status!=='спряна'?'selected':''}>работи</option><option ${m?.status==='спряна'?'selected':''}>спряна</option></select></label>
     <div id="ferr" class="err"></div>
     <div class="btns"><button class="btn pri" onclick="saveMachine()">Запази</button>
-    ${m&&confirmKey!=='del'?`<button class="btn" onclick="confirmKey='del';render()">Махни машината</button>`:''}</div></section>
+    ${m&&confirmKey!=='del'?`<button class="btn" onclick="confirmKey='del';rmWhy='';render()">Махни машината</button>`:''}</div></section>
   ${m&&confirmKey==='del'?`<section class="card" style="border-color:var(--bad)"><h2>Махни ${esc(m.num)}</h2>
     <div>Защо махаш машината?</div>
-    <div class="btns">${['прехвърлена','продадена','бракувана'].map(r=>`<button class="btn" onclick="act('retireMachine',{id:'${m.id}',reason:'${r}'},{err:'#rmerr',ok:'Машината е изведена от парка.',then:()=>go('home')})">${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>
-    <div class="small muted">Машината изчезва от всички списъци и машинистите не могат да я избират. Историята ѝ остава в справките. Може да се върне от „Изведени от парка“ най-долу на началния екран.</div>
+    <div class="btns">${['прехвърлена','продадена','бракувана'].map(r=>`<button class="btn ${rmWhy===r?'pri':''}" onclick="rmWhy='${r}';render()">${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>
+    ${rmWhy==='прехвърлена'?`<label for="rmto">Към коя фирма<input id="rmto" placeholder="име на фирмата" autocomplete="off"></label>`
+      :rmWhy==='продадена'?`<label for="rmto">На кого е продадена (по желание)<input id="rmto" autocomplete="off"></label>`:''}
+    ${rmWhy?`<button class="btn danger" onclick="retireGo('${m.id}')">Изведи от парка</button>`:''}
+    <div class="small muted">Машината изчезва от всички списъци и машинистите не могат да я избират. Историята ѝ остава в справките. Може да се върне от „Изведени от парка“ на началния екран.</div>
     <div id="rmerr" class="err"></div>
     <details class="grp" style="border-color:var(--bad)"><summary style="font-family:var(--f-body);font-size:.95rem;color:var(--bad)">Изтрий напълно (пробна или въведена по грешка)</summary>
       <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px">
@@ -752,13 +756,19 @@ function machineForm(){
       <label for="delconf">Напиши номера ${esc(m.num)} за потвърждение<input id="delconf" class="mono" inputmode="numeric" maxlength="5" autocomplete="off"></label>
       <button class="btn danger" onclick="if($('#delconf').value.trim()!=='${esc(m.num)}'){$('#rmerr').textContent='Напиши точно номера ${esc(m.num)}.';return}act('delMachine',{id:'${m.id}',confirm:$('#delconf').value.trim()},{err:'#rmerr',ok:'Машината и историята ѝ са изтрити.',then:()=>go('home')})">Изтрий завинаги</button></div></details>
     <div class="btns">
-      <button class="btn sm" onclick="confirmKey=null;render()">Отказ</button></div></section>`:''}`;
+      <button class="btn sm" onclick="confirmKey=null;rmWhy='';render()">Отказ</button></div></section>`:''}`;
+}
+let rmWhy='';
+function retireGo(id){
+  const to=$('#rmto')?$('#rmto').value.trim():'';
+  if(rmWhy==='прехвърлена'&&!to){$('#rmerr').textContent='Напиши към коя фирма се прехвърля.';return}
+  act('retireMachine',{id,reason:rmWhy,to},{err:'#rmerr',ok:'Машината е изведена от парка.',then:()=>{rmWhy='';go('home')}});
 }
 function saveMachine(){
   const g=s=>$(s).value.trim(),num=g('#fnum');
   if(!/^\d{4,5}$/.test(num)){$('#ferr').textContent='Номерът трябва да е 4 или 5 цифри.';return}
   if(!g('#ftype')){$('#ferr').textContent='Въведи вид на машината.';return}
-  act('saveMachine',{id:view.id||null,num,type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst')},
+  act('saveMachine',{id:view.id||null,num,type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst'),from:g('#ffrom')},
     {err:'#ferr',ok:'Машината е записана.',then:()=>{const m=byNum(num);m?go('machine',{id:m.id}):go('home')}});
 }
 function services(){return [...new Set([...db.repairs.map(r=>r.service),...db.damages.map(d=>d.service)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'bg'))}
@@ -969,15 +979,43 @@ function machineReportCsv(){
   downloadCsv([['Номер','Вид','Марка и модел','Обект сега','Дни работа','Дни в периода','Дни помощ при ремонт','Общо','Мярка','Смени'],
     ...rows.map(r=>[`="${r.m.num}"`,r.m.type,r.m.model,r.m.location,r.days,span,r.rd,cn(r.sum),r.m.unit,r.n])],`mashini-${rep.data.month}.csv`);
 }
+/* ---------- ИЗВЕДЕНИ ОТ ПАРКА ---------- */
+const retWhy=m=>m.retWhy||((m.retired||'').split(' · ')[1]||'изведена').split(' → ')[0];
+const retTo=m=>m.retTo||((m.retired||'').split(' → ')[1]||'');
+const retDate=m=>(m.retired||'').split(' · ')[0]||'';
+const retT=m=>{const x=/^(\d{2})\.(\d{2})\.(\d{4})/.exec(retDate(m));return x?new Date(+x[3],+x[2]-1,+x[1]).getTime():0};
+const WHY_LABEL={'прехвърлена':'Прехвърлени','продадена':'Продадени','бракувана':'Бракувани'};
+function retiredList(){
+  const f=view.f||'',all=[...(db.retired||[])].sort((a,b)=>retT(b)-retT(a)||a.num.localeCompare(b.num));
+  return {f,all,list:f?all.filter(m=>retWhy(m)===f):all};
+}
+function retiredView(){
+  const {f,all,list}=retiredList(),cnt=w=>all.filter(m=>retWhy(m)===w).length;
+  return `<button class="back" onclick="go('home')">← Назад</button>
+  <section class="card"><div class="toolbar"><h2>Изведени от парка</h2>${list.length?`<button class="btn sm" onclick="retiredCsv()">⬇ Свали за Excel</button>`:''}</div>
+    <div class="chipbar">${[['','Всички',all.length],...Object.keys(WHY_LABEL).map(w=>[w,WHY_LABEL[w],cnt(w)])].map(([w,l,n])=>`<button class="${f===w?'on':''}" onclick="view.f='${w}';confirmKey=null;render()">${l} · ${n}</button>`).join('')}</div>
+    ${list.length?`<div class="list">${list.map(m=>`<div class="row" style="cursor:default"><span class="num">${esc(m.num)}</span>
+      <div class="main"><div class="t">${esc(m.type)} ${esc(m.model||'')}</div>
+        <div class="s" style="white-space:normal">${esc(retDate(m))} · <b>${esc(retWhy(m))}</b>${retTo(m)?` → ${esc(retTo(m))}`:''}${m.from?`<br>взета от ${esc(m.from)}`:''}</div></div>
+      ${isA()?(confirmKey==='rs'+m.id?`<button class="btn sm pri" onclick="act('restoreMachine',{id:'${m.id}'},{ok:'Машината е върната в парка.'})">Да, върни</button>`
+        :`<button class="btn sm" onclick="confirmKey='rs${m.id}';render()">Върни</button>`):''}</div>`).join('')}</div>`
+      :'<div class="empty">Няма такива машини.</div>'}</section>`;
+}
+function retiredCsv(){
+  const {f,list}=retiredList();
+  downloadCsv([['Номер','Вид','Марка и модел','Отчита','Последно показание','Причина','Дата','Към / на','Взета от'],
+    ...list.map(m=>[`="${m.num}"`,m.type,m.model,m.unit==='км'?'километри':'моточасове',cn(m.val),retWhy(m),retDate(m),retTo(m),m.from||''])],
+    `izvedeni${f?'-'+f:''}-${iso()}.csv`);
+}
 /* Целият машинен парк за Excel (инвентар). */
 function machinesCsv(){
   const rows=[...db.machines].sort((a,b)=>a.type.localeCompare(b.type,'bg')||a.num.localeCompare(b.num)).map(m=>{
     const ds=db.damages.filter(d=>d.machineId===m.id&&d.status!=='поправена'),sv=svc(m),sh=openShiftOn(m.id);
     return [`="${m.num}"`,m.type,m.model,m.unit==='км'?'километри':'моточасове',cn(m.val),m.location,m.status,
       ds.map(d=>`${fmtD(d.at)} ${d.text} (${d.status})`).join(' | '),
-      sv&&!sv.none?cn(sv.last.val):'',sv&&!sv.none?cn(sv.next):'',sv&&!sv.none?cn(sv.left):sv&&sv.none?'няма записано':'',sh?sh.user:''];
+      sv&&!sv.none?cn(sv.last.val):'',sv&&!sv.none?cn(sv.next):'',sv&&!sv.none?cn(sv.left):sv&&sv.none?'няма записано':'',sh?sh.user:'',m.from||''];
   });
-  downloadCsv([['Номер','Вид','Марка и модел','Отчита','Показание','Обект','Състояние','Отворени повреди','Последно обслужване (мч)','Следващо обслужване (мч)','Остават до обслужване (мч)','Сега на машината'],...rows],
+  downloadCsv([['Номер','Вид','Марка и модел','Отчита','Показание','Обект','Състояние','Отворени повреди','Последно обслужване (мч)','Следващо обслужване (мч)','Остават до обслужване (мч)','Сега на машината','Взета от'],...rows],
     `mashinen-park-${iso()}.csv`);
 }
 function reportCsv(){
