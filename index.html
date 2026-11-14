@@ -546,10 +546,16 @@ function homeView(){
     return due.length?`<section class="card"><h3>За обслужване · ${due.length}</h3><div class="list">${due.map(mRow).join('')}</div></section>`:''})()}
   ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
   ${db.machines.length?`<button class="btn" onclick="machinesCsv()">⬇ Всички машини за Excel</button>`:''}
+  ${isA()&&db.retired&&db.retired.length?`<details class="grp" ${retOpen?'open':''} ontoggle="retOpen=this.open"><summary>Изведени от парка<span class="cnt">${db.retired.length}</span></summary><div class="list">
+    ${[...db.retired].sort((a,b)=>a.num.localeCompare(b.num)).map(m=>`<div class="row" style="cursor:default"><span class="num">${esc(m.num)}</span>
+      <div class="main"><div class="t">${esc(m.type)} ${esc(m.model||'')}</div><div class="s" style="white-space:normal">${esc(m.retired||'изведена')}</div></div>
+      ${confirmKey==='rs'+m.id?`<button class="btn sm pri" onclick="act('restoreMachine',{id:'${m.id}'},{ok:'Машината е върната в парка.'})">Да, върни</button>`
+        :`<button class="btn sm" onclick="confirmKey='rs${m.id}';render()">Върни</button>`}</div>`).join('')}</div></details>`:''}
   ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
 }
 /* Машини по обекти: за всеки обект колко машини има от всеки вид. Натискаш обект → списък по видове. */
 const openSites=new Set();
+let retOpen=false;
 function siteTg(el){el.open?openSites.add(el.dataset.k):openSites.delete(el.dataset.k)}
 function sitesSummary(){
   if(!db.machines.length)return '';
@@ -732,7 +738,16 @@ function machineForm(){
     <label for="fval">Показание сега<input id="fval" class="big-in" inputmode="decimal" value="${m?m.val??'':''}" placeholder="0"></label>
     <label for="floc">Къде е<select id="floc">${siteOptions(m?.location)}</select></label>
     <label for="fst">Състояние<select id="fst"><option ${m?.status!=='спряна'?'selected':''}>работи</option><option ${m?.status==='спряна'?'selected':''}>спряна</option></select></label>
-    <div id="ferr" class="err"></div><button class="btn pri" onclick="saveMachine()">Запази</button></section>`;
+    <div id="ferr" class="err"></div>
+    <div class="btns"><button class="btn pri" onclick="saveMachine()">Запази</button>
+    ${m&&confirmKey!=='del'?`<button class="btn" onclick="confirmKey='del';render()">Махни машината</button>`:''}</div></section>
+  ${m&&confirmKey==='del'?`<section class="card" style="border-color:var(--bad)"><h2>Махни ${esc(m.num)}</h2>
+    <div>Защо махаш машината?</div>
+    <div class="btns">${['прехвърлена','продадена','бракувана'].map(r=>`<button class="btn" onclick="act('retireMachine',{id:'${m.id}',reason:'${r}'},{err:'#rmerr',ok:'Машината е изведена от парка.',then:()=>go('home')})">${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>
+    <div class="small muted">Машината изчезва от всички списъци и машинистите не могат да я избират. Историята ѝ остава в справките. Може да се върне от „Изведени от парка“ най-долу на началния екран.</div>
+    <div id="rmerr" class="err"></div>
+    <div class="btns"><button class="btn sm danger" onclick="act('delMachine',{id:'${m.id}'},{err:'#rmerr',ok:'Машината е изтрита.',then:()=>go('home')})">Изтрий напълно (въведена по грешка)</button>
+      <button class="btn sm" onclick="confirmKey=null;render()">Отказ</button></div></section>`:''}`;
 }
 function saveMachine(){
   const g=s=>$(s).value.trim(),num=g('#fnum');
@@ -914,7 +929,9 @@ function machineRows(){
   const dim=new Date(y,mo,0).getDate();
   const span=(now.getFullYear()===y&&now.getMonth()+1===mo)?now.getDate():new Date(y,mo-1,1)>now?0:dim;
   const by={};d.shifts.forEach(s=>{(by[s.num]=by[s.num]||[]).push(s)});
-  const rows=db.machines.map(m=>{
+  const known=new Set(db.machines.map(m=>m.num)),gone={};
+  d.shifts.forEach(s=>{if(!known.has(s.num)&&!gone[s.num])gone[s.num]={id:'',num:s.num,type:s.type||'?',model:s.model||'',unit:s.unit||'мч',location:'изведена от парка'}});
+  const rows=[...db.machines,...Object.values(gone)].map(m=>{
     const l=by[m.num]||[],work=l.filter(s=>s.kind!=='ремонт');
     let sum=0;work.forEach(s=>{const x=diffOf(s);if(x!=null)sum+=x});
     return {m,days:new Set(work.map(s=>fmtD(s.startAt))).size,rd:new Set(l.filter(s=>s.kind==='ремонт').map(s=>fmtD(s.startAt))).size,
@@ -930,7 +947,7 @@ function machineReportBody(){
     <dl class="kv"><dt>Машини</dt><dd><b>${rows.length}</b>${idle?` · <span style="color:var(--bad);font-weight:600">${idle} не са работили</span>`:''}</dd>
       <dt>Общо</dt><dd>${totLine(t)}</dd><dt>Период</dt><dd>${span} дни${span<dim?' (до днес)':''}</dd></dl>
     <div class="small muted">Най-малко работилите са отгоре. Натисни машина за досието ѝ.</div>
-    <div class="list">${rows.map(r=>`<button class="row" onclick="go('machine',{id:'${r.m.id}'})"><span class="num">${esc(r.m.num)}</span>
+    <div class="list">${rows.map(r=>`<button class="row" ${r.m.id?`onclick="go('machine',{id:'${r.m.id}'})"`:'style="cursor:default"'}><span class="num">${esc(r.m.num)}</span>
       <div class="main"><div class="t">${esc(r.m.type)} ${esc(r.m.model||'')}</div><div class="s" style="white-space:normal">работила ${r.days} от ${span} дни · ${esc(r.m.location||'—')}</div></div>
       <div class="stack">${r.days?`<b class="mono">${nf(r.sum)} ${esc(r.m.unit)}</b>`:'<span class="chip c-bad">не е работила</span>'}${r.rd?`<span class="chip c-warn">ремонт ${r.rd} д.</span>`:''}</div></button>`).join('')}</div></section>`;
 }
