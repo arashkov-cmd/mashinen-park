@@ -979,12 +979,56 @@ function machineReportBody(){
       <div class="main"><div class="t">${esc(r.m.type)} ${esc(r.m.model||'')}</div><div class="s" style="white-space:normal">работила ${r.days} от ${span} дни · ${esc(r.m.location||'—')}</div></div>
       <div class="stack">${r.days?`<b class="mono">${nf(r.sum)} ${esc(r.m.unit)}</b>`:'<span class="chip c-bad">не е работила</span>'}${r.rd?`<span class="chip c-warn">ремонт ${r.rd} д.</span>`:''}</div></button>`).join('')}</div></section>`;
 }
+/* ---------- Excel (.xlsx) ----------
+   Истински Excel файл, сглобен тук (без външни библиотеки): удебелен и замразен първи ред, филтри, ширини на колоните.
+   Отваря се еднакво в Excel на компютъра, на телефона и в Google Таблици. */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function zipStore(files){            // files: [[име, Uint8Array]] — ZIP без компресия
+  const enc=new TextEncoder(),parts=[],cd=[];let off=0;
+  const u16=v=>[v&255,(v>>8)&255],u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];
+  files.forEach(([name,data])=>{
+    const nb=enc.encode(name),crc=crc32(data),sz=data.length;
+    const head=[...u32(0x04034b50),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(crc),...u32(sz),...u32(sz),...u16(nb.length),...u16(0)];
+    parts.push(new Uint8Array(head),nb,data);
+    cd.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(crc),...u32(sz),...u32(sz),...u16(nb.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nb);
+    off+=head.length+nb.length+sz;
+  });
+  const cdSize=cd.reduce((a,b)=>a+b.length,0);
+  return new Blob([...parts,...cd,new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(cdSize),...u32(off),...u16(0)])],
+    {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function xlsxBlob(rows,sheetName){
+  const x=v=>String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const col=n=>{let s='';n++;while(n){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26)}return s};
+  const val=v=>{                        // ="0123" → текст с нулата; „1447,5“ → число; иначе текст
+    if(v==null)return null;const s=String(v);let m=/^="(.*)"$/.exec(s);if(m)return m[1];
+    if(typeof v==='number')return v;
+    if(/^-?(0|[1-9]\d{0,14})([.,]\d+)?$/.test(s))return Number(s.replace(',','.'));
+    return s;
+  };
+  const data=rows.map(r=>r.map(val)),nc=Math.max(...data.map(r=>r.length)),nr=data.length,last=col(nc-1)+nr;
+  const widths=[...Array(nc)].map((_,c)=>Math.min(60,Math.max(6,...data.map(r=>String(r[c]??'').length))+2));
+  const sheetRows=data.map((r,i)=>`<row r="${i+1}">${r.map((v,c)=>{
+    if(v===null||v==='')return '';const ref=col(c)+(i+1),st=i===0?' s="1"':'';
+    return typeof v==='number'?`<c r="${ref}"${st}><v>${v}</v></c>`:`<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`}).join('')}</row>`).join('');
+  const NS='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',name=x(String(sheetName||'Справка').replace(/[\\\/?*\[\]:]/g,' ').slice(0,31));
+  const enc=new TextEncoder(),X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  return zipStore([
+    ['[Content_Types].xml',enc.encode(X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>')],
+    ['_rels/.rels',enc.encode(X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')],
+    ['xl/workbook.xml',enc.encode(X+`<workbook ${NS} xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${name}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${name}'!$A$1:$${col(nc-1)}$${nr}</definedName></definedNames></workbook>`)],
+    ['xl/_rels/workbook.xml.rels',enc.encode(X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')],
+    ['xl/styles.xml',enc.encode(X+`<styleSheet ${NS}><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`)],
+    ['xl/worksheets/sheet1.xml',enc.encode(X+`<worksheet ${NS}><dimension ref="A1:${last}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${widths.map((w,c)=>`<col min="${c+1}" max="${c+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:${last}"/></worksheet>`)]
+  ]);
+}
+/* Името е историческо: сваля вече .xlsx вместо .csv. */
 function downloadCsv(rows,name){
-  const q=v=>{const s=String(v??'');if(/^="\d+"$/.test(s))return s;return /[;"\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
-  const csv='﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download=name;document.body.appendChild(a);a.click();
-  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(xlsxBlob(rows,'Справка'));
+  a.download=name.replace(/\.csv$/,'.xlsx');document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
 }
 const cn=v=>v==null?'':String(v).replace('.',',');
 function machineReportCsv(){
@@ -1038,11 +1082,8 @@ function reportCsv(){
   const rows=[['Дата','Ден','Машинист','Номер','Вид','Марка и модел','Обект','Начало','Край','Часове','Начално','Крайно','Разлика','Мярка','Бележка']];
   d.shifts.forEach(s=>rows.push([fmtD(s.startAt),WD[new Date(s.startAt).getDay()],s.user,`="${s.num}"`,s.type,s.model,s.site,fmtT(s.startAt),s.endAt?fmtT(s.endAt):'',
     n(hoursOf(s)),n(s.startVal),n(s.endVal),n(diffOf(s)),s.unit,[s.kind==='ремонт'?'помощ при ремонт':'',s.auto?'приключена автоматично':'',s.endAt==null?'още работи':''].filter(Boolean).join(', ')]));
-  const csv='﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n');
   const who=d.uid==='*'?'vsichki':String((db.users.find(u=>u.id===d.uid)||{}).name||'mashinist').replace(/[\\/:*?"<>|\s]+/g,'_');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download=`spravka-${d.month}-${who}.csv`;document.body.appendChild(a);a.click();
-  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
+  downloadCsv(rows,`spravka-${d.month}-${who}.csv`);
 }
 
 /* ---------- АДМИН: обекти ---------- */
