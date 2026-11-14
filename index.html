@@ -449,7 +449,7 @@ function opMatch(){
   const m=byNum(q);
   if(!m)return q.length>=5||!db.machines.some(x=>x.num.startsWith(q))?`<div class="err">Няма машина с номер ${esc(q)}. Провери номера.</div>`:`<div class="small muted">Довърши номера…</div>`;
   const card=`<div class="mcard"><span class="mono" style="font-size:1.6rem;font-weight:700">${esc(m.num)}</span><span>${esc(m.type)} · ${esc(m.model||'')}</span>
-    <span class="small muted">Последно: <span class="mono">${nf(m.val)} ${m.unit}</span></span></div>`;
+    <span class="small muted">Последно: ${m.val>0?`<span class="mono">${nf(m.val)} ${m.unit}</span>`:'още няма — въведи от таблото'}</span></div>`;
   if(m.status==='спряна'&&!op.repair){
     return card+`<div class="alert">⚠ Машината е спряна.</div>
       <div class="btns"><button class="btn pri" onclick="op.repair=true;drawOp()">Помагам при ремонта</button>
@@ -471,7 +471,7 @@ const JUMP={'мч':24,'км':1500};
 let jumpVal=null,jumpAgain=null;
 function jumpOk(v,base,unit,sel,again){
   const lim=JUMP[unit]||JUMP['мч'];
-  if(v-base<=lim||jumpVal===v)return true;
+  if(!(base>0)||v-base<=lim||jumpVal===v)return true;   // машина без показание (0) — не питаме
   jumpAgain=again;
   $(sel).innerHTML=`<div class="alert" style="font-weight:500">⚠ Това е с <b>${nf(Math.round((v-base)*10)/10)} ${esc(unit)}</b> повече от последното (${nf(base)} ${esc(unit)}). Провери цифрите на таблото.
     <div class="btns" style="margin-top:10px"><button class="btn sm danger" onclick="jumpVal=${v};jumpAgain&&jumpAgain()">Да, вярно е</button><button class="btn sm" onclick="this.closest('.alert').remove()">Ще поправя</button></div></div>`;
