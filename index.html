@@ -171,6 +171,23 @@ details.sgrp .sumline .chip{font-family:var(--f-body);font-size:.8rem;font-weigh
 .sgrp-empty{display:flex;justify-content:space-between;gap:10px;padding:10px 16px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:.95rem}
 .sgrp-empty .cnt{font-size:.85rem}
 .pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.protbox{display:flex;flex-direction:column;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
+.protbox[hidden]{display:none}
+.phl{font-weight:700;font-size:.9rem}
+.phs{display:flex;flex-wrap:wrap;gap:8px}
+.pht{position:relative;width:84px;height:110px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:.75rem;color:var(--muted)}
+.pht img{width:100%;height:100%;object-fit:cover}
+.pht button{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:rgb(0 0 0 / .65);color:#fff;font-size:.9rem;cursor:pointer}
+.pht.ld .spin{width:24px;height:24px;border-width:3px}
+label.phbtn{flex-direction:row;align-items:center;justify-content:center;color:var(--ink);font-size:1rem;font-weight:600}
+.viewer{position:fixed;inset:0;z-index:40;background:#0e1216;display:flex;flex-direction:column;color:#fff}
+.vtop{display:flex;align-items:center;gap:10px;padding:max(10px,env(safe-area-inset-top,0px)) 12px 10px;border-bottom:1px solid rgb(255 255 255 / .15)}
+.vtop b{flex:1;min-width:0;font-size:.9rem;line-height:1.3}
+.vtop .btn{color:var(--ink);flex-shrink:0}
+.vbody{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;align-items:center;gap:16px;-webkit-overflow-scrolling:touch}
+.vbody figure{margin:0;max-width:100%;display:flex;flex-direction:column;gap:6px}
+.vbody img{max-width:100%;height:auto;border-radius:6px;background:#fff}
+.vbody figcaption{font-size:.85rem;opacity:.85}.vbody a{color:#ffd66b}
 .chipbar{display:flex;flex-wrap:wrap;gap:6px}
 .chipbar button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:var(--bg);color:var(--muted);cursor:pointer}
 .chipbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -250,14 +267,14 @@ function svcChip(m){
 }
 
 let tt;function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(tt);tt=setTimeout(()=>e.hidden=true,2800)}
-function go(n,extra={}){if(n==='machine'&&extra.id&&view.id!==extra.id)delete allShifts[extra.id];view={n,...extra};confirmKey=null;render();window.scrollTo(0,0)}
+function go(n,extra={}){ph=[];if(n==='machine'&&extra.id&&view.id!==extra.id)delete allShifts[extra.id];view={n,...extra};confirmKey=null;render();window.scrollTo(0,0)}
 function setBusy(b){busy=b;$('#busy').hidden=!b;document.body.classList.toggle('busy',b)}
 function netMsg(m){return /network|NetworkError|Failed to fetch|Load failed|connection|timed out/i.test(m)?'Няма интернет. Опитай пак.':m}
 
 /* ---------- сървър ---------- */
 /* Връзка с Google Apps Script през интернет (doPost в Code.gs).
    Пращаме обикновен текст, за да няма допълнителна проверка от браузъра. */
-const READS={login:1,load:1,shiftsOf:1,report:1};
+const READS={login:1,load:1,shiftsOf:1,report:1,photo:1};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 /* Един опит до сървъра. Връща {data} или хвърля грешка; e.retry=true, ако може да се опита пак. */
 async function call1(body){
@@ -431,6 +448,8 @@ function render(){
      : v==='report'?reportView()
      : v==='faults'?faultsView()
      : v==='retired'?retiredView()
+     : isA()&&v==='transferForm'?transferForm()
+     : isA()&&v==='receiveBack'?receiveBack()
      : homeView();
   }
   app.innerHTML=header()+`<main class="wrap">${b}</main>`+nav();
@@ -551,6 +570,7 @@ function homeView(){
     return due.length?`<section class="card"><h3>За обслужване · ${due.length}</h3><div class="list">${due.map(mRow).join('')}</div></section>`:''})()}
   ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
   ${db.machines.length?`<button class="btn" onclick="machinesCsv()">⬇ Всички машини за Excel</button>`:''}
+  ${(db.transfers||[]).length?`<button class="btn" onclick="transfersCsv()">⬇ Всички протоколи за Excel</button>`:''}
   ${db.retired&&db.retired.length?`<button class="btn" onclick="go('retired')">Изведени от парка · ${db.retired.length}</button>`:''}
   ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
 }
@@ -659,13 +679,15 @@ function machineView(id){
     ${A?`<div class="btns">${stBtn}<button class="btn sm" onclick="go('machineForm',{id:'${id}'})">Промени данните</button></div>`:''}</section>
 
   <section class="card"><div class="toolbar"><h3>Повреди · ${dmg.length}</h3>${A?`<button class="btn sm" onclick="go('damageForm',{mid:'${id}'})">+ Повреда</button>`:''}</div>
-    ${dmg.length?dmg.map(d=>`<div class="ev ${d.status==='поправена'?'ok':d.status==='в ремонт'?'warn':'bad'}"><div class="h"><span class="chip ${DCLS[d.status]||'c-n'}">${esc(d.status)}</span><span>${fmtD(d.at)}</span>${d.closedAt?`<span>поправена ${fmtD(d.closedAt)}</span>`:''}</div>
+    ${dmg.length?dmg.map(d=>`<div class="ev ${d.status==='поправена'?'ok':d.status==='в ремонт'?'warn':'bad'}"><div class="h"><span class="chip ${DCLS[d.status]||'c-n'}">${esc(d.status)}</span><span>${fmtD(d.at)}</span>${d.closedAt?`<span>поправена ${fmtD(d.closedAt)}</span>`:''}${ownedAt(id,d.at)?'':'<span class="chip c-warn">извън нашия период</span>'}</div>
       <div>${esc(d.text)}</div>${d.service?`<div class="small muted">Сервиз: <b style="color:var(--ink)">${esc(d.service)}</b></div>`:''}
       ${A?`<button class="btn sm" style="align-self:flex-start" onclick="go('damageForm',{mid:'${id}',did:'${d.id}'})">Промени</button>`:''}</div>`).join(''):'<div class="empty">Няма записани повреди.</div>'}</section>
 
   <section class="card"><div class="toolbar"><h3>Ремонти и обслужване · ${reps.length}</h3>${A?`<button class="btn sm" onclick="go('repairForm',{mid:'${id}'})">+ Запис</button>`:''}</div>
-    ${reps.length?reps.map(r=>`<div class="ev ok"><div class="h">${r.kind==='обслужване'?'<span class="chip c-ok">обслужване</span>':'<span class="chip c-n">ремонт</span>'}<b style="color:var(--ink)">${esc(r.service)}</b><span>${fmtD(r.at)}</span>${r.val!=null?`<span class="mono">при ${nf(r.val)} ${m.unit}</span>`:''}</div><div>${esc(r.text)}</div>
+    ${reps.length?reps.map(r=>`<div class="ev ok"><div class="h">${r.kind==='обслужване'?'<span class="chip c-ok">обслужване</span>':'<span class="chip c-n">ремонт</span>'}<b style="color:var(--ink)">${esc(r.service)}</b><span>${fmtD(r.at)}</span>${r.val!=null?`<span class="mono">при ${nf(r.val)} ${m.unit}</span>`:''}${ownedAt(id,r.at)?'':'<span class="chip c-warn">извън нашия период</span>'}</div><div>${esc(r.text)}</div>
       ${A?`<button class="btn sm" style="align-self:flex-start" onclick="go('repairForm',{mid:'${id}',rid:'${r.id}'})">Промени</button>`:''}</div>`).join(''):'<div class="empty">Няма записани ремонти.</div>'}</section>
+
+  ${transfersSection(m,A)}
 
   <section class="card"><h3>Къде е била</h3>
     ${!full?'<div class="empty">Зареждане…</div>':placesHtml(id)}</section>
@@ -751,9 +773,10 @@ function machineForm(){
     <label for="funit">Отчита<select id="funit"><option value="мч" ${m?.unit!=='км'?'selected':''}>Моточасове</option><option value="км" ${m?.unit==='км'?'selected':''}>Километри</option></select></label>
     <label for="fval">Показание сега<input id="fval" class="big-in" inputmode="decimal" value="${m?m.val??'':''}" placeholder="0"></label>
     <label for="floc">Къде е<select id="floc">${siteOptions(m?.location)}</select></label>
-    <label for="ffrom">Взета от (фирма)<input id="ffrom" value="${esc(m?.from)}" placeholder="празно = нова машина" autocomplete="off"></label>
-    <div class="pair"><label for="ffp">Протокол приемане №<input id="ffp" value="${esc(m?.fromProt)}" autocomplete="off"></label>
-      <label for="ffpd">Дата<input id="ffpd" type="date" value="${m?.fromProtAt?iso(m.fromProtAt):''}"></label></div>
+    <label for="ffrom">Взета от (фирма)<input id="ffrom" value="${esc(m?.from)}" placeholder="празно = нова машина" autocomplete="off"${!m?` oninput="$('#recvbox').hidden=!this.value.trim()"`:''}></label>
+    ${!m?`<div id="recvbox" class="protbox" hidden><div class="phl">Протокол за приемане — задължителен</div>
+      <div class="pair"><label for="ffp">Протокол №<input id="ffp" autocomplete="off"></label><label for="ffpd">Дата<input id="ffpd" type="date" value="${iso()}"></label></div>
+      ${phField()}</div>`:`<div class="small muted">Протоколите за приемане и предаване са в досието на машината → „Протоколи“.</div>`}
     <label for="fst">Състояние<select id="fst"><option ${m?.status!=='спряна'?'selected':''}>работи</option><option ${m?.status==='спряна'?'selected':''}>спряна</option></select></label>
     <div id="ferr" class="err"></div>
     <div class="btns"><button class="btn pri" onclick="saveMachine()">Запази</button>
@@ -763,7 +786,9 @@ function machineForm(){
     <div class="btns">${['прехвърлена','продадена','бракувана'].map(r=>`<button class="btn ${rmWhy===r?'pri':''}" onclick="rmWhy='${r}';render()">${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>
     ${rmWhy==='прехвърлена'?`<label for="rmto">Към коя фирма<input id="rmto" placeholder="име на фирмата" autocomplete="off"></label>`
       :rmWhy==='продадена'?`<label for="rmto">На кого е продадена (по желание)<input id="rmto" autocomplete="off"></label>`:''}
-    ${rmWhy?`<div class="pair"><label for="rmp">Протокол №<input id="rmp" autocomplete="off"></label><label for="rmpd">Дата<input id="rmpd" type="date" value="${iso()}"></label></div>`:''}
+    ${rmWhy==='прехвърлена'?`<div class="protbox"><div class="phl">Протокол за предаване — задължителен</div>
+      <div class="pair"><label for="rmp">Протокол №<input id="rmp" autocomplete="off"></label><label for="rmpd">Дата<input id="rmpd" type="date" value="${iso()}"></label></div>${phField()}</div>`
+      :rmWhy?`<div class="pair"><label for="rmp">Протокол № (по желание)<input id="rmp" autocomplete="off"></label><label for="rmpd">Дата<input id="rmpd" type="date" value="${iso()}"></label></div>`:''}
     ${rmWhy?`<button class="btn danger" onclick="retireGo('${m.id}')">Изведи от парка</button>`:''}
     <div class="small muted">Машината изчезва от всички списъци и машинистите не могат да я избират. Историята ѝ остава в справките. Може да се върне от „Изведени от парка“ на началния екран.</div>
     <div id="rmerr" class="err"></div>
@@ -779,13 +804,17 @@ let rmWhy='';
 function retireGo(id){
   const to=$('#rmto')?$('#rmto').value.trim():'';
   if(rmWhy==='прехвърлена'&&!to){$('#rmerr').textContent='Напиши към коя фирма се прехвърля.';return}
-  act('retireMachine',{id,reason:rmWhy,to,prot:$('#rmp')?$('#rmp').value.trim():'',protAt:$('#rmpd')?$('#rmpd').value:''},{err:'#rmerr',ok:'Машината е изведена от парка.',then:()=>{rmWhy='';go('home')}});
+  if(rmWhy==='прехвърлена'){const e=protCheck('#rmp','#rmpd');if(e){$('#rmerr').textContent=e;return}}
+  act('retireMachine',{id,reason:rmWhy,to,prot:$('#rmp')?$('#rmp').value.trim():'',protAt:$('#rmpd')?$('#rmpd').value:'',photos:rmWhy==='прехвърлена'?ph.map(p=>p.id):[]},{err:'#rmerr',ok:'Машината е изведена от парка.',then:()=>{rmWhy='';go('home')}});
 }
 function saveMachine(){
   const g=s=>$(s).value.trim(),num=g('#fnum');
   if(!/^\d{4,5}$/.test(num)){$('#ferr').textContent='Номерът трябва да е 4 или 5 цифри.';return}
   if(!g('#ftype')){$('#ferr').textContent='Въведи вид на машината.';return}
-  act('saveMachine',{id:view.id||null,num,type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst'),from:g('#ffrom'),fromProt:g('#ffp'),fromProtAt:g('#ffpd')},
+  const recv=!view.id&&g('#ffrom');
+  if(recv){const e=protCheck('#ffp','#ffpd');if(e){$('#ferr').textContent=e;return}}
+  act('saveMachine',{id:view.id||null,num,type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst'),from:g('#ffrom'),
+    protNo:recv?g('#ffp'):'',protAt:recv?g('#ffpd'):'',photos:recv?ph.map(p=>p.id):[]},
     {err:'#ferr',ok:'Машината е записана.',then:()=>{const m=byNum(num);m?go('machine',{id:m.id}):go('home')}});
 }
 function services(){return [...new Set([...db.repairs.map(r=>r.service),...db.damages.map(d=>d.service)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'bg'))}
@@ -1040,6 +1069,139 @@ function machineReportCsv(){
   downloadCsv([['Номер','Вид','Марка и модел','Обект сега','Дни работа','Дни в периода','Дни помощ при ремонт','Общо','Мярка','Смени'],
     ...rows.map(r=>[`="${r.m.num}"`,r.m.type,r.m.model,r.m.location,r.days,span,r.rd,cn(r.sum),r.m.unit,r.n])],`mashini-${rep.data.month}.csv`);
 }
+/* ---------- ПРОТОКОЛИ И СНИМКИ ---------- */
+let ph=[],phBusy=0;                                   // снимките на протокола във формата, която е отворена
+const phCache={};
+function compressPhoto(file){
+  return new Promise((res,rej)=>{
+    const u=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{URL.revokeObjectURL(u);let q=.72,max=1600,out='';
+      for(let i=0;i<5;i++){const k=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');
+        c.width=Math.max(1,Math.round(img.naturalWidth*k));c.height=Math.max(1,Math.round(img.naturalHeight*k));
+        const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);
+        out=c.toDataURL('image/jpeg',q);if(out.length<1100000)break;q-=.1;max-=200}
+      res(out)};
+    img.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Тази снимка не може да се отвори. Пробвай с камерата.'))};
+    img.src=u;
+  });
+}
+async function addPhotos(inp){
+  const files=[...inp.files];inp.value='';
+  for(const f of files){
+    phBusy++;drawPh();
+    try{const data=await compressPhoto(f);const r=await call('uploadPhoto',{data});ph.push({id:r.id,url:data});['#ferr','#rmerr','#terr','#berr'].forEach(x=>{const e=$(x);if(e&&/снимк/i.test(e.textContent))e.textContent=''})}
+    catch(e){toast(e.message==='AUTH'?'Влез отново.':e.message)}
+    finally{phBusy--;drawPh()}
+  }
+}
+function phHtml(){
+  return ph.map((p,i)=>`<div class="pht"><img src="${p.url}" alt="Страница ${i+1}"><button type="button" aria-label="Махни снимка ${i+1}" onclick="ph.splice(${i},1);drawPh()">✕</button></div>`).join('')
+    +(phBusy?`<div class="pht ld"><div class="spin"></div><span>качва се…</span></div>`:'')
+    +(!ph.length&&!phBusy?'<div class="small muted">Още няма снимка.</div>':'');
+}
+function drawPh(){const e=$('#phs');if(e)e.innerHTML=phHtml()}
+function phField(){
+  return `<div id="phs" class="phs">${phHtml()}</div>
+    <label class="btn phbtn">📷 Снимай / добави страница<input type="file" accept="image/*" multiple hidden onchange="addPhotos(this)"></label>`;
+}
+function protCheck(noSel,atSel){
+  if(!$(noSel).value.trim())return 'Напиши номера на протокола.';
+  if(!$(atSel).value)return 'Избери датата на протокола.';
+  if(phBusy)return 'Изчакай снимките да се качат.';
+  if(!ph.length)return 'Снимай протокола — поне една снимка.';
+  return '';
+}
+const transfersOf=mid=>(db.transfers||[]).filter(t=>t.machineId===mid);
+const lastOut=m=>transfersOf(m.id).filter(t=>t.dir==='предаване').sort((a,b)=>(b.protAt||0)-(a.protAt||0)||(b.madeAt||0)-(a.madeAt||0))[0];
+/* При нас ли е била машината на дата t — по протоколите за приемане и предаване. */
+function ownedAt(mid,t){
+  const tr=transfersOf(mid).filter(x=>x.protAt).sort((a,b)=>a.protAt-b.protAt||(a.madeAt||0)-(b.madeAt||0));
+  if(!tr.length||!t)return true;
+  let st=tr[0].dir!=='приемане';
+  tr.forEach(x=>{if(x.protAt<=t)st=x.dir==='приемане'});
+  return st;
+}
+function transfersSection(m,A){
+  const list=transfersOf(m.id).sort((a,b)=>(b.protAt||0)-(a.protAt||0)||(b.madeAt||0)-(a.madeAt||0));
+  const legacy=!list.length&&(m.fromProt||m.fromProtAt)?`<div class="small muted">Протокол за приемане № ${esc(m.fromProt||'—')}${m.fromProtAt?' / '+fmtD(m.fromProtAt):''} (без снимка)</div>`:'';
+  return `<section class="card"><div class="toolbar"><h3>Протоколи · ${list.length}</h3>${A?`<button class="btn sm" onclick="go('transferForm',{mid:'${m.id}'})">+ Протокол</button>`:''}</div>
+    ${list.length?list.map(t=>`<div class="ev ${t.dir==='приемане'?'ok':'warn'}">
+      <div class="h"><b style="color:var(--ink)">${t.dir==='приемане'?'↓ Приета от':'↑ Предадена на'} ${esc(t.firm)}</b></div>
+      <div class="small">${t.protAt?fmtD(t.protAt):''} · протокол № ${esc(t.protNo)}</div>
+      <div class="btns"><button class="btn sm" onclick="showT('${t.id}')">📷 Виж протокола (${String(t.photos||'').split(',').filter(String).length})</button>
+        ${A?(confirmKey==='dt'+t.id?`<button class="btn sm danger" onclick="act('delTransfer',{id:'${t.id}'},{ok:'Протоколът е изтрит.'})">Да, изтрий</button>`
+          :`<button class="btn sm" onclick="confirmKey='dt${t.id}';render()">Изтрий</button>`):''}</div></div>`).join('')
+      :legacy||'<div class="empty">Няма записани протоколи.</div>'}</section>`;
+}
+function dataUrlToBlobUrl(d){
+  const i=d.indexOf(','),mime=/data:(.*?);/.exec(d)[1],bin=atob(d.slice(i+1)),u=new Uint8Array(bin.length);
+  for(let k=0;k<bin.length;k++)u[k]=bin.charCodeAt(k);
+  return URL.createObjectURL(new Blob([u],{type:mime}));
+}
+function showT(tid){
+  const t=(db.transfers||[]).find(x=>x.id===tid);if(!t)return;
+  const m=M(t.machineId)||(db.retired||[]).find(x=>x.id===t.machineId)||{num:t.num};
+  showPhotos(String(t.photos||'').split(',').filter(String),`${m.num} · ${t.dir==='приемане'?'приета от':'предадена на'} ${t.firm} · № ${t.protNo}${t.protAt?' / '+fmtD(t.protAt):''}`);
+}
+async function showPhotos(ids,title){
+  const ov=document.createElement('div');ov.className='viewer';ov.setAttribute('role','dialog');ov.setAttribute('aria-modal','true');
+  ov.innerHTML=`<div class="vtop"><b>${esc(title)}</b><button class="btn sm" onclick="this.closest('.viewer').remove()">✕ Затвори</button></div><div class="vbody"><div class="spin"></div></div>`;
+  document.body.appendChild(ov);
+  const out=[];
+  for(const id of ids){try{out.push(phCache[id]||(phCache[id]=(await call('photo',{id})).data))}catch(e){out.push(null)}}
+  if(!ov.isConnected)return;
+  ov.querySelector('.vbody').innerHTML=out.length?out.map((d,i)=>d?`<figure><img src="${d}" alt="Страница ${i+1}">
+      <figcaption>Страница ${i+1} от ${out.length} · <a href="${dataUrlToBlobUrl(d)}" target="_blank" rel="noopener">отвори в цял размер</a></figcaption></figure>`
+    :`<div class="alert">Страница ${i+1} не може да се зареди.</div>`).join(''):'<div class="alert">Няма снимки.</div>';
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){const v=document.querySelector('.viewer');if(v)v.remove()}});
+function transferForm(){
+  const m=M(view.mid);if(!m)return homeView();
+  return `<button class="back" onclick="go('machine',{id:'${m.id}'})">← Назад</button>
+  <section class="card"><h2>Нов протокол</h2>
+    <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
+    <div class="small muted">За стари прехвърляния или пропуснат протокол. Не сменя състоянието на машината — за предаване ползвай „Махни машината“.</div>
+    <label for="tdir">Посока<select id="tdir"><option value="приемане">↓ Приемане (идва при нас)</option><option value="предаване">↑ Предаване (отива в друга фирма)</option></select></label>
+    <label for="tfirm">Фирма<input id="tfirm" value="${esc(m.from||'')}" autocomplete="off"></label>
+    <div class="pair"><label for="tno">Протокол №<input id="tno" autocomplete="off"></label><label for="tat">Дата<input id="tat" type="date" value="${iso()}"></label></div>
+    ${phField()}
+    <div id="terr" class="err"></div>
+    <button class="btn pri" onclick="saveTransfer()">Запази протокола</button></section>`;
+}
+function saveTransfer(){
+  const e=$('#terr');if(!$('#tfirm').value.trim()){e.textContent='Напиши фирмата.';return}
+  const c=protCheck('#tno','#tat');if(c){e.textContent=c;return}
+  const mid=view.mid;
+  act('addTransfer',{mid,dir:$('#tdir').value,firm:$('#tfirm').value.trim(),protNo:$('#tno').value.trim(),protAt:$('#tat').value,photos:ph.map(p=>p.id)},
+    {err:'#terr',ok:'Протоколът е записан.',then:()=>go('machine',{id:mid})});
+}
+function receiveBack(){
+  const m=(db.retired||[]).find(x=>x.id===view.id);if(!m)return retiredView();
+  return `<button class="back" onclick="go('retired')">← Назад</button>
+  <section class="card"><h2>Приеми обратно</h2>
+    <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
+    <div class="small muted">Машината се връща в парка с цялата си история. Нужен е протокол за приемане със снимка.</div>
+    <label for="bfirm">От коя фирма<input id="bfirm" value="${esc(retTo(m))}" autocomplete="off"></label>
+    <div class="pair"><label for="bno">Протокол №<input id="bno" autocomplete="off"></label><label for="bat">Дата<input id="bat" type="date" value="${iso()}"></label></div>
+    ${phField()}
+    <div id="berr" class="err"></div>
+    <button class="btn pri" onclick="receiveGo()">Приеми в парка</button></section>`;
+}
+function receiveGo(){
+  const e=$('#berr');if(!$('#bfirm').value.trim()){e.textContent='Напиши от коя фирма идва машината.';return}
+  const c=protCheck('#bno','#bat');if(c){e.textContent=c;return}
+  const id=view.id;
+  act('restoreMachine',{id,firm:$('#bfirm').value.trim(),protNo:$('#bno').value.trim(),protAt:$('#bat').value,photos:ph.map(p=>p.id)},
+    {err:'#berr',ok:'Машината е приета обратно в парка.',then:()=>go('machine',{id})});
+}
+function transfersCsv(){
+  const all=[...db.machines,...(db.retired||[])],byId={};all.forEach(m=>byId[m.id]=m);
+  const rows=[...(db.transfers||[])].sort((a,b)=>(b.protAt||0)-(a.protAt||0)).map(t=>{const m=byId[t.machineId]||{};
+    return [`="${t.num}"`,m.type||'',m.model||'',t.dir,t.firm,t.protNo,t.protAt?fmtD(t.protAt):'',String(t.photos||'').split(',').filter(String).length,
+      t.madeAt?fmt(t.madeAt):'',t.by||'',m.status==='изведена'?'изведена':m.id?'в парка':'изтрита']});
+  downloadCsv([['Номер','Вид','Марка и модел','Посока','Фирма','Протокол №','Дата на протокола','Снимки (бр.)','Въведен на','Въвел','Машината сега'],...rows],`protokoli-${iso()}.csv`);
+}
+
 /* ---------- ИЗВЕДЕНИ ОТ ПАРКА ---------- */
 const protTxt=(n,t)=>n||t?` · протокол${n?' № '+esc(n):''}${t?' / '+fmtD(t):''}`:'';
 const retWhy=m=>m.retWhy||((m.retired||'').split(' · ')[1]||'изведена').split(' → ')[0];
@@ -1058,16 +1220,18 @@ function retiredView(){
     <div class="chipbar">${[['','Всички',all.length],...Object.keys(WHY_LABEL).map(w=>[w,WHY_LABEL[w],cnt(w)])].map(([w,l,n])=>`<button class="${f===w?'on':''}" onclick="view.f='${w}';confirmKey=null;render()">${l} · ${n}</button>`).join('')}</div>
     ${list.length?`<div class="list">${list.map(m=>`<div class="row" style="cursor:default"><span class="num">${esc(m.num)}</span>
       <div class="main"><div class="t">${esc(m.type)} ${esc(m.model||'')}</div>
-        <div class="s" style="white-space:normal">${esc(retDate(m))} · <b>${esc(retWhy(m))}</b>${retTo(m)?` → ${esc(retTo(m))}`:''}${protTxt(m.retProt,m.retProtAt)}${m.from?`<br>взета от ${esc(m.from)}${protTxt(m.fromProt,m.fromProtAt)}`:''}</div></div>
-      ${isA()?(confirmKey==='rs'+m.id?`<button class="btn sm pri" onclick="act('restoreMachine',{id:'${m.id}'},{ok:'Машината е върната в парка.'})">Да, върни</button>`
-        :`<button class="btn sm" onclick="confirmKey='rs${m.id}';render()">Върни</button>`):''}</div>`).join('')}</div>`
+        <div class="s" style="white-space:normal">${esc(retDate(m))} · <b>${esc(retWhy(m))}</b>${retTo(m)?` → ${esc(retTo(m))}`:''}${lastOut(m)?protTxt(lastOut(m).protNo,lastOut(m).protAt):protTxt(m.retProt,m.retProtAt)}${m.from?`<br>взета от ${esc(m.from)}${protTxt(m.fromProt,m.fromProtAt)}`:''}</div></div>
+      <div class="stack">${lastOut(m)?`<button class="btn sm" onclick="showT('${lastOut(m).id}')">📷 Протокол</button>`:''}
+      ${isA()?(retWhy(m)==='прехвърлена'?`<button class="btn sm pri" onclick="go('receiveBack',{id:'${m.id}'})">Приеми обратно</button>`
+        :confirmKey==='rs'+m.id?`<button class="btn sm pri" onclick="act('restoreMachine',{id:'${m.id}'},{ok:'Машината е върната в парка.'})">Да, върни</button>`
+        :`<button class="btn sm" onclick="confirmKey='rs${m.id}';render()">Върни</button>`):''}</div></div>`).join('')}</div>`
       :'<div class="empty">Няма такива машини.</div>'}</section>`;
 }
 function retiredCsv(){
   const {f,list}=retiredList();
   downloadCsv([['Номер','Вид','Марка и модел','Отчита','Последно показание','Причина','Дата','Към / на','Протокол предаване №','Дата на протокола','Взета от','Протокол приемане №','Дата приемане'],
     ...list.map(m=>[`="${m.num}"`,m.type,m.model,m.unit==='км'?'километри':'моточасове',cn(m.val),retWhy(m),retDate(m),retTo(m),
-      m.retProt||'',m.retProtAt?fmtD(m.retProtAt):'',m.from||'',m.fromProt||'',m.fromProtAt?fmtD(m.fromProtAt):''])],
+      lastOut(m)?lastOut(m).protNo:m.retProt||'',lastOut(m)?fmtD(lastOut(m).protAt):m.retProtAt?fmtD(m.retProtAt):'',m.from||'',m.fromProt||'',m.fromProtAt?fmtD(m.fromProtAt):''])],
     `izvedeni${f?'-'+f:''}-${iso()}.csv`);
 }
 /* Целият машинен парк за Excel (инвентар). */
