@@ -188,6 +188,7 @@ label.phbtn{flex-direction:row;align-items:center;justify-content:center;color:v
 .vbody figure{margin:0;max-width:100%;display:flex;flex-direction:column;gap:6px}
 .vbody img{max-width:100%;height:auto;border-radius:6px;background:#fff}
 .vbody figcaption{font-size:.85rem;opacity:.85}.vbody a{color:#ffd66b}
+.bkline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-size:.85rem;color:var(--muted);padding:4px 2px}
 .chipbar{display:flex;flex-wrap:wrap;gap:6px}
 .chipbar button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:var(--bg);color:var(--muted);cursor:pointer}
 .chipbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -573,6 +574,8 @@ function homeView(){
   ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
   ${db.machines.length?`<button class="btn" onclick="machinesCsv()">⬇ Всички машини за Excel</button>`:''}
   ${(db.transfers||[]).length?`<button class="btn" onclick="transfersCsv()">⬇ Всички протоколи за Excel</button>`:''}
+  ${isA()&&db.backup?`<div class="bkline"><span>Резервно копие: <b>${db.backup.at?fmt(db.backup.at):'още няма'}</b>${db.backup.err?`<br><span style="color:var(--bad)">Последният опит не успя: ${esc(db.backup.err)}</span>`:''}</span>
+    <button class="btn sm" onclick="act('backupNow',{},{ok:'Копието е направено — в Google Drive → Моят диск.'})">Направи копие сега</button></div>`:''}
   ${db.retired&&db.retired.length?`<button class="btn" onclick="go('retired')">Изведени от парка · ${db.retired.length}</button>`:''}
   ${!db.machines.length?`<div class="empty">Още няма машини.${isA()?' Добави първата с бутона горе.':''}</div>`:''}`;
 }
@@ -804,7 +807,7 @@ function machineForm(){
     <label for="floc">Къде е<select id="floc">${siteOptions(m?.location)}</select></label>
     <label for="ffrom">Взета от (фирма)<input id="ffrom" value="${esc(m?.from)}" placeholder="празно = нова машина" autocomplete="off"${!m?` oninput="$('#recvbox').hidden=!this.value.trim()"`:''}></label>
     ${!m?`<div id="recvbox" class="protbox" hidden><div class="phl">Протокол за приемане — задължителен</div>
-      <div class="pair"><label for="ffp">Протокол №<input id="ffp" autocomplete="off"></label><label for="ffpd">Дата<input id="ffpd" type="date" value="${iso()}"></label></div>
+      <div class="pair"><label for="ffp">Протокол № (ако има)<input id="ffp" autocomplete="off"></label><label for="ffpd">Дата<input id="ffpd" type="date" value="${iso()}"></label></div>
       ${phField()}</div>`:`<div class="small muted">Протоколите за приемане и предаване са в досието на машината → „Протоколи“.</div>`}
     <label for="fst">Състояние<select id="fst"><option ${m?.status!=='спряна'?'selected':''}>работи</option><option ${m?.status==='спряна'?'selected':''}>спряна</option></select></label>
     <div id="ferr" class="err"></div>
@@ -816,7 +819,7 @@ function machineForm(){
     ${rmWhy==='прехвърлена'?`<label for="rmto">Към коя фирма<input id="rmto" placeholder="име на фирмата" autocomplete="off"></label>`
       :rmWhy==='продадена'?`<label for="rmto">На кого е продадена (по желание)<input id="rmto" autocomplete="off"></label>`:''}
     ${rmWhy==='прехвърлена'?`<div class="protbox"><div class="phl">Протокол за предаване — задължителен</div>
-      <div class="pair"><label for="rmp">Протокол №<input id="rmp" autocomplete="off"></label><label for="rmpd">Дата<input id="rmpd" type="date" value="${iso()}"></label></div>${phField()}</div>`
+      <div class="pair"><label for="rmp">Протокол № (ако има)<input id="rmp" autocomplete="off"></label><label for="rmpd">Дата<input id="rmpd" type="date" value="${iso()}"></label></div>${phField()}</div>`
       :rmWhy?`<div class="pair"><label for="rmp">Протокол № (по желание)<input id="rmp" autocomplete="off"></label><label for="rmpd">Дата<input id="rmpd" type="date" value="${iso()}"></label></div>`:''}
     ${rmWhy?`<button class="btn danger" onclick="retireGo('${m.id}')">Изведи от парка</button>`:''}
     <div class="small muted">Машината изчезва от всички списъци и машинистите не могат да я избират. Историята ѝ остава в справките. Може да се върне от „Изведени от парка“ на началния екран.</div>
@@ -1134,7 +1137,6 @@ function phField(){
     <label class="btn phbtn">📷 Снимай / добави страница<input type="file" accept="image/*" multiple hidden onchange="addPhotos(this)"></label>`;
 }
 function protCheck(noSel,atSel){
-  if(!$(noSel).value.trim())return 'Напиши номера на протокола.';
   if(!$(atSel).value)return 'Избери датата на протокола.';
   if(phBusy)return 'Изчакай снимките да се качат.';
   if(!ph.length)return 'Снимай протокола — поне една снимка.';
@@ -1156,7 +1158,7 @@ function transfersSection(m,A){
   return `<section class="card"><div class="toolbar"><h3>Протоколи · ${list.length}</h3>${A?`<button class="btn sm" onclick="go('transferForm',{mid:'${m.id}'})">+ Протокол</button>`:''}</div>
     ${list.length?list.map(t=>`<div class="ev ${t.dir==='приемане'?'ok':'warn'}">
       <div class="h"><b style="color:var(--ink)">${t.dir==='приемане'?'↓ Приета от':'↑ Предадена на'} ${esc(t.firm)}</b></div>
-      <div class="small">${t.protAt?fmtD(t.protAt):''} · протокол № ${esc(t.protNo)}</div>
+      <div class="small">${t.protAt?fmtD(t.protAt):''} · ${t.protNo?'протокол № '+esc(t.protNo):'протокол без номер'}</div>
       <div class="btns"><button class="btn sm" onclick="showT('${t.id}')">📷 Виж протокола (${String(t.photos||'').split(',').filter(String).length})</button>
         ${A?(confirmKey==='dt'+t.id?`<button class="btn sm danger" onclick="act('delTransfer',{id:'${t.id}'},{ok:'Протоколът е изтрит.'})">Да, изтрий</button>`
           :`<button class="btn sm" onclick="confirmKey='dt${t.id}';render()">Изтрий</button>`):''}</div></div>`).join('')
@@ -1170,7 +1172,7 @@ function dataUrlToBlobUrl(d){
 function showT(tid){
   const t=(db.transfers||[]).find(x=>x.id===tid);if(!t)return;
   const m=M(t.machineId)||(db.retired||[]).find(x=>x.id===t.machineId)||{num:t.num};
-  showPhotos(String(t.photos||'').split(',').filter(String),`${m.num} · ${t.dir==='приемане'?'приета от':'предадена на'} ${t.firm} · № ${t.protNo}${t.protAt?' / '+fmtD(t.protAt):''}`);
+  showPhotos(String(t.photos||'').split(',').filter(String),`${m.num} · ${t.dir==='приемане'?'приета от':'предадена на'} ${t.firm}${t.protNo?' · № '+t.protNo:''}${t.protAt?' · '+fmtD(t.protAt):''}`);
 }
 async function showPhotos(ids,title){
   const ov=document.createElement('div');ov.className='viewer';ov.setAttribute('role','dialog');ov.setAttribute('aria-modal','true');
@@ -1192,7 +1194,7 @@ function transferForm(){
     <div class="small muted">За стари прехвърляния или пропуснат протокол. Не сменя състоянието на машината — за предаване ползвай „Махни машината“.</div>
     <label for="tdir">Посока<select id="tdir"><option value="приемане">↓ Приемане (идва при нас)</option><option value="предаване">↑ Предаване (отива в друга фирма)</option></select></label>
     <label for="tfirm">Фирма<input id="tfirm" value="${esc(m.from||'')}" autocomplete="off"></label>
-    <div class="pair"><label for="tno">Протокол №<input id="tno" autocomplete="off"></label><label for="tat">Дата<input id="tat" type="date" value="${iso()}"></label></div>
+    <div class="pair"><label for="tno">Протокол № (ако има)<input id="tno" autocomplete="off"></label><label for="tat">Дата<input id="tat" type="date" value="${iso()}"></label></div>
     ${phField()}
     <div id="terr" class="err"></div>
     <button class="btn pri" onclick="saveTransfer()">Запази протокола</button></section>`;
@@ -1211,7 +1213,7 @@ function receiveBack(){
     <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
     <div class="small muted">Машината се връща в парка с цялата си история. Нужен е протокол за приемане със снимка.</div>
     <label for="bfirm">От коя фирма<input id="bfirm" value="${esc(retTo(m))}" autocomplete="off"></label>
-    <div class="pair"><label for="bno">Протокол №<input id="bno" autocomplete="off"></label><label for="bat">Дата<input id="bat" type="date" value="${iso()}"></label></div>
+    <div class="pair"><label for="bno">Протокол № (ако има)<input id="bno" autocomplete="off"></label><label for="bat">Дата<input id="bat" type="date" value="${iso()}"></label></div>
     ${phField()}
     <div id="berr" class="err"></div>
     <button class="btn pri" onclick="receiveGo()">Приеми в парка</button></section>`;
@@ -1232,7 +1234,7 @@ function transfersCsv(){
 }
 
 /* ---------- ИЗВЕДЕНИ ОТ ПАРКА ---------- */
-const protTxt=(n,t)=>n||t?` · протокол${n?' № '+esc(n):''}${t?' / '+fmtD(t):''}`:'';
+const protTxt=(n,t)=>n||t?` · протокол${n?' № '+esc(n):''}${t?(n?' / ':' от ')+fmtD(t):''}`:'';
 const retWhy=m=>m.retWhy||((m.retired||'').split(' · ')[1]||'изведена').split(' → ')[0];
 const retTo=m=>m.retTo||((m.retired||'').split(' → ')[1]||'');
 const retDate=m=>(m.retired||'').split(' · ')[0]||'';
