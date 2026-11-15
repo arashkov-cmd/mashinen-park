@@ -191,12 +191,14 @@ label.phbtn{flex-direction:row;align-items:center;justify-content:center;color:v
 .chipbar{display:flex;flex-wrap:wrap;gap:6px}
 .chipbar button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:var(--bg);color:var(--muted);cursor:pointer}
 .chipbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:inherit;color:var(--ink);cursor:pointer;text-align:left;min-width:0}
 .tile .tn{font-family:var(--f-mono);font-size:2rem;font-weight:700;line-height:1.1}
 .tile .tl{font-weight:600;color:var(--muted)}
 .tile.t-warn{border-color:var(--warn);background:var(--warn-soft)}.tile.t-warn .tn,.tile.t-warn .tl{color:var(--warn)}
+.tile.t-idle{border-color:var(--accent);background:var(--accent-soft)}.tile.t-idle .tn,.tile.t-idle .tl{color:var(--ink)}
 .tile.t-bad{border-color:var(--bad);background:var(--bad-soft)}.tile.t-bad .tn,.tile.t-bad .tl{color:var(--bad)}
+.segbar.s3{grid-template-columns:repeat(3,minmax(0,1fr))}.segbar.s3 button{font-size:.8rem;padding:10px 4px}
 .segbar{display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
 .segbar button{font:inherit;font-weight:600;border:0;border-radius:9px;padding:12px 8px;background:none;color:var(--muted);cursor:pointer;min-width:0}
 .segbar button.on{background:var(--ink);color:var(--bg)}
@@ -604,13 +606,24 @@ function faultLists(){
   const stopped=db.machines.filter(m=>m.status==='спряна');
   const since=m=>{const d=openDmg(m.id)[0];return d?d.at:Infinity};
   const sort=l=>l.sort((a,b)=>since(a)-since(b)||a.num.localeCompare(b.num));   // най-отдавна повредените отгоре
-  return {withD:sort(withD),stopped:sort(stopped)};
+  // без работа днес: не са спрени, но днес никой не е започнал смяна на тях
+  const t0=today0(),idle=db.machines.filter(m=>m.status!=='спряна'&&!(m.lastAt>=t0))
+    .sort((a,b)=>(a.lastAt?0:1)-(b.lastAt?0:1)||(a.lastAt||0)-(b.lastAt||0)||a.num.localeCompare(b.num));
+  return {withD:sort(withD),stopped:sort(stopped),idle};
+}
+const fTab=()=>['dmg','stop','idle'].includes(view.tab)?view.tab:'dmg';
+const fList=f=>({dmg:f.withD,stop:f.stopped,idle:f.idle})[fTab()];
+function lastTxt(m){
+  if(!m.lastAt)return 'още не е работила в приложението';
+  const n=Math.floor((today0()-new Date(m.lastAt).setHours(0,0,0,0))/864e5);
+  return 'последна смяна: '+(n===1?'вчера':`преди ${n} дни`)+` (${fmt(m.lastAt)})`;
 }
 function faultTiles(){
   const f=faultLists();
   return `<div class="tiles">
     <button class="tile ${f.withD.length?'t-warn':''}" onclick="go('faults',{tab:'dmg'})"><span class="tn">${f.withD.length}</span><span class="tl">С повреди</span></button>
-    <button class="tile ${f.stopped.length?'t-bad':''}" onclick="go('faults',{tab:'stop'})"><span class="tn">${f.stopped.length}</span><span class="tl">Спрени</span></button></div>`;
+    <button class="tile ${f.stopped.length?'t-bad':''}" onclick="go('faults',{tab:'stop'})"><span class="tn">${f.stopped.length}</span><span class="tl">Спрени</span></button>
+    <button class="tile ${f.idle.length?'t-idle':''}" onclick="go('faults',{tab:'idle'})"><span class="tn">${f.idle.length}</span><span class="tl">Без работа</span></button></div>`;
 }
 function daysAgo(t){const n=Math.floor((today0()-new Date(t).setHours(0,0,0,0))/864e5);return n<=0?'днес':n===1?'от вчера':`от ${n} дни`}
 function today0(){const d=new Date();d.setHours(0,0,0,0);return d.getTime()}
@@ -622,15 +635,31 @@ function faultCard(m){
       :`<div class="small muted" style="padding:0 4px">Няма записана повреда${isA()?' — добави я от досието.':'.'}</div>`}</div>`;
 }
 function faultsView(){
-  const f=faultLists(),tab=view.tab==='stop'?'stop':'dmg',list=tab==='stop'?f.stopped:f.withD;
+  const f=faultLists(),tab=fTab(),list=fList(f);
+  const T={dmg:'С повреди',stop:'Спрени',idle:'Без работа днес'};
   return `<button class="back" onclick="go('home')">← Назад</button>
-  <div class="toolbar"><h2>${tab==='dmg'?'С повреди':'Спрени'}</h2>${list.length?`<button class="btn sm" onclick="faultsCsv()">⬇ Свали за Excel</button>`:''}</div>
-  <div class="segbar"><button class="${tab==='dmg'?'on':''}" onclick="view.tab='dmg';render()">С повреди · ${f.withD.length}</button><button class="${tab==='stop'?'on':''}" onclick="view.tab='stop';render()">Спрени · ${f.stopped.length}</button></div>
-  <div class="small muted">${tab==='dmg'?'Машини с неотстранена повреда, които още работят. Спрените са в „Спрени“. Най-отдавна повредените са отгоре.':'Машини, отбелязани като спрени. Най-отдавна спрелите са отгоре.'}</div>
-  ${list.length?`<div class="list">${list.map(faultCard).join('')}</div>`:`<div class="okbox">${tab==='dmg'?'Няма машини с повреди.':'Няма спрени машини.'}</div>`}`;
+  <div class="toolbar"><h2>${T[tab]}</h2>${list.length?`<button class="btn sm" onclick="faultsCsv()">⬇ Свали за Excel</button>`:''}</div>
+  <div class="segbar s3"><button class="${tab==='dmg'?'on':''}" onclick="view.tab='dmg';render()">С повреди · ${f.withD.length}</button><button class="${tab==='stop'?'on':''}" onclick="view.tab='stop';render()">Спрени · ${f.stopped.length}</button><button class="${tab==='idle'?'on':''}" onclick="view.tab='idle';render()">Без работа · ${f.idle.length}</button></div>
+  <div class="small muted">${tab==='dmg'?'Машини с неотстранена повреда, които още работят. Спрените са в „Спрени“. Най-отдавна повредените са отгоре.'
+    :tab==='stop'?'Машини, отбелязани като спрени. Най-отдавна спрелите са отгоре.'
+    :'Машини, които не са спрени, но днес още никой не е започнал смяна на тях. Най-отдавна неработилите са отгоре.'}</div>
+  ${list.length?`<div class="list">${list.map(tab==='idle'?idleCard:faultCard).join('')}</div>`
+    :`<div class="okbox">${tab==='dmg'?'Няма машини с повреди.':tab==='stop'?'Няма спрени машини.':'Днес всички машини, които не са спрени, имат започната смяна.'}</div>`}`;
+}
+function ordBg(n){const t=n%100,u=n%10;return n+'-'+(t>=11&&t<=19?'ти':u===1?'ви':u===2?'ри':u===7||u===8?'ми':'ти')}
+function idleCard(m){
+  const n=m.lastAt?Math.max(1,Math.floor((today0()-new Date(m.lastAt).setHours(0,0,0,0))/864e5)):0;
+  const chip=n?`<span class="chip ${n>=3?'c-bad':n===2?'c-warn':'c-n'}">${ordBg(n)} ден без работа</span>`:'<span class="chip c-n">не е работила в приложението</span>';
+  return `<div class="fcard">${mRow(m)}<div style="padding:0 6px 4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">${chip}${n?`<span class="small muted">последна смяна ${fmt(m.lastAt)}</span>`:''}</div></div>`;
 }
 function faultsCsv(){
-  const f=faultLists(),tab=view.tab==='stop'?'stop':'dmg',list=tab==='stop'?f.stopped:f.withD,rows=[];
+  if(fTab()==='idle'){
+    const days=t=>t?Math.max(0,Math.floor((today0()-new Date(t).setHours(0,0,0,0))/864e5)):'';
+    downloadCsv([['Номер','Вид','Марка и модел','Обект','Последна смяна','Дни без работа'],
+      ...faultLists().idle.map(m=>[`="${m.num}"`,m.type,m.model,m.location,m.lastAt?fmt(m.lastAt):'още не е работила',days(m.lastAt)])],`bez-rabota-${iso()}.csv`);
+    return;
+  }
+  const f=faultLists(),tab=fTab(),list=fList(f),rows=[];
   const days=t=>Math.max(0,Math.floor((today0()-new Date(t).setHours(0,0,0,0))/864e5));
   list.forEach(m=>{
     const base=[`="${m.num}"`,m.type,m.model,m.location,m.status];
