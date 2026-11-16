@@ -188,14 +188,15 @@ label.phbtn{flex-direction:row;align-items:center;justify-content:center;color:v
 .vbody figure{margin:0;max-width:100%;display:flex;flex-direction:column;gap:6px}
 .vbody img{max-width:100%;height:auto;border-radius:6px;background:#fff}
 .vbody figcaption{font-size:.85rem;opacity:.85}.vbody a{color:#ffd66b}
+.drivebar{border-color:var(--accent);background:var(--accent-soft)}
 .bkline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-size:.85rem;color:var(--muted);padding:4px 2px}
 .chipbar{display:flex;flex-wrap:wrap;gap:6px}
 .chipbar button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:var(--bg);color:var(--muted);cursor:pointer}
 .chipbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:inherit;color:var(--ink);cursor:pointer;text-align:left;min-width:0}
-.tile .tn{font-family:var(--f-mono);font-size:2rem;font-weight:700;line-height:1.1}
-.tile .tl{font-weight:600;color:var(--muted)}
+.tile .tn{font-family:var(--f-mono);font-size:1.8rem;font-weight:700;line-height:1.1}
+.tile .tl{font-weight:600;color:var(--muted);font-size:.9rem;line-height:1.2}
 .tile.t-warn{border-color:var(--warn);background:var(--warn-soft)}.tile.t-warn .tn,.tile.t-warn .tl{color:var(--warn)}
 .tile.t-idle{border-color:var(--accent);background:var(--accent-soft)}.tile.t-idle .tn,.tile.t-idle .tl{color:var(--ink)}
 .tile.t-bad{border-color:var(--bad);background:var(--bad-soft)}.tile.t-bad .tn,.tile.t-bad .tl{color:var(--bad)}
@@ -257,16 +258,36 @@ const M=id=>db.machines.find(m=>m.id===id);
 const byNum=n=>db.machines.find(m=>m.num===String(n).trim());
 const openShiftOn=mid=>db.shifts.find(s=>s.machineId===mid&&s.endAt==null);
 const isA=()=>me&&me.role==='администратор';
+const isVeh=m=>!!m&&m.cat==='автомобил';                      // бус, пикап, лека кола
+let homeCat=(()=>{try{return localStorage.getItem('mashinen-park-g2-cat')||'машина'}catch(e){return 'машина'}})();
+function setCat(c){homeCat=c;try{localStorage.setItem('mashinen-park-g2-cat',c)}catch(e){}view.type='';render()}
+const hasVeh=()=>db.machines.some(isVeh);
+const CM=()=>{const c=hasVeh()?homeCat:'машина';return db.machines.filter(m=>(m.cat||'машина')===c)};   // машините от избраната категория
+function catBar(){
+  if(!hasVeh())return '';
+  const nv=db.machines.filter(isVeh).length,nm=db.machines.length-nv;
+  return `<div class="segbar"><button class="${homeCat!=='автомобил'?'on':''}" onclick="setCat('машина')">🚜 Машини · ${nm}</button><button class="${homeCat==='автомобил'?'on':''}" onclick="setCat('автомобил')">🚐 Автомобили · ${nv}</button></div>`;
+}
+const TRIP_ASK=400;                                           // над толкова км от последния запис — питаме „Ти ли ги изкара всички?“
+function whenTxt(t){const d=Math.floor((today0()-new Date(t).setHours(0,0,0,0))/864e5);return (d<=0?'днес':d===1?'вчера':fmtD(t))+' '+fmtT(t)}
+const tripTime=s=>s.kind==='курс'||s.kind==='незаписан'?`записан ${fmtT(s.endAt||s.startAt)}`:`${fmtT(s.startAt)}–${s.endAt?fmtT(s.endAt):'…'}`;
+const myOpen=()=>db.shifts.find(s=>s.endAt==null&&s.userId===me.id);
+/* Обслужване: машини на мч — на всеки 500 мч; машини/автомобили на км — на всеки X км (ако е зададено) */
+function svcInt(m){
+  if(m.unit==='мч')return {every:SVC_EVERY,warn:SVC_WARN,u:'мч'};
+  if(m.unit==='км'&&m.svcKm>0)return {every:m.svcKm,warn:Math.max(300,Math.round(m.svcKm/10)),u:'км'};
+  return null;
+}
 function svc(m){
-  if(m.unit!=='мч')return null;
+  const k=svcInt(m);if(!k)return null;
   const last=db.repairs.filter(r=>r.machineId===m.id&&r.kind==='обслужване'&&r.val!=null).sort((a,b)=>b.val-a.val)[0];
-  if(!last)return {none:true};
-  const next=last.val+SVC_EVERY,left=Math.round((next-(m.val||0))*10)/10;
-  return {last,next,left,due:left<=SVC_WARN,over:left<0};
+  if(!last)return {none:true,u:k.u};
+  const next=last.val+k.every,left=Math.round((next-(m.val||0))*10)/10;
+  return {last,next,left,due:left<=k.warn,over:left<0,u:k.u};
 }
 function svcChip(m){
   const s=svc(m);if(!s||s.none||!s.due)return '';
-  return s.over?`<span class="chip c-bad">обсл. просрочено ${nf(-s.left)} мч</span>`:`<span class="chip c-warn">обсл. след ${nf(s.left)} мч</span>`;
+  return s.over?`<span class="chip c-bad">обсл. просрочено ${nf(-s.left)} ${s.u}</span>`:`<span class="chip c-warn">обсл. след ${nf(s.left)} ${s.u}</span>`;
 }
 
 let tt;function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(tt);tt=setTimeout(()=>e.hidden=true,2800)}
@@ -449,6 +470,7 @@ function render(){
      : isA()&&v==='sites'?sitesView()
      : isA()&&v==='shiftForm'?shiftForm()
      : v==='report'?reportView()
+     : v==='drive'?driveView()
      : v==='faults'?faultsView()
      : v==='retired'?retiredView()
      : isA()&&v==='transferForm'?transferForm()
@@ -469,18 +491,67 @@ function opView(){
       <div class="muted">Довиждане!</div>
       <button class="btn pri" onclick="logout()">Изход</button></section>`;
   }
-  const sh=db.shifts.find(s=>s.endAt==null);
+  const sh=myOpen();
   const t0=new Date();t0.setHours(0,0,0,0);
   if(sh&&sh.startAt>=t0.getTime()&&M(sh.machineId))return endView(sh);
   return startView(sh);
 }
 function startView(old){
   const om=old&&M(old.machineId);
-  return `${om?`<div class="demo">Вчера не приключи смяната на <b>${esc(om.num)}</b>. Няма проблем — ще се приключи сама, щом въведеш показанията днес.</div>`:''}
-    <section class="card"><h2>Започвам работа</h2>
-    <label for="onum">Номер на машината
+  const drv=me.role!=='машинист';
+  return `${om?`<div class="demo">Вчера не приключи ${isVeh(om)?'курса с':'смяната на'} <b>${esc(om.num)}</b>. Няма проблем — ще се приключи сам${isVeh(om)?'':'а'}, щом въведеш показанията днес.</div>`:''}
+    <section class="card"><h2>${drv?'Курс с автомобил':'Започвам работа'}</h2>
+    <label for="onum">${drv?'Номер на автомобила':'Номер на машината или автомобила'}
       <input id="onum" class="numin" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="0000" value="${esc(op.q)}" oninput="this.value=this.value.replace(/\\D/g,'');op.q=this.value;op.repair=false;drawOp()"></label>
     <div id="opm" style="display:flex;flex-direction:column;gap:12px">${opMatch()}</div></section>`;
+}
+function driveView(){
+  const sh=myOpen();
+  if(sh&&M(sh.machineId))return endView(sh);
+  return `<button class="back" onclick="go('home')">← Назад</button>`+startView(null);
+}
+function driveBanner(){
+  if(!db.machines.some(isVeh))return '';
+  const sh=myOpen(),m=sh&&M(sh.machineId);
+  if(m)return `<button class="row drivebar" onclick="go('drive')"><span class="num">${esc(m.num)}</span><div class="main"><div class="t">🚐 На път с ${esc(m.type)} от ${fmtT(sh.startAt)}</div><div class="s">${esc(sh.route||'')}</div></div><span class="chip c-warn">Пристигнах →</span></button>`;
+  return `<button class="btn" onclick="op={q:'',repair:false,done:null};go('drive')">🚐 Запиши курс с автомобил</button>`;
+}
+/* ---------- КУРС С АВТОМОБИЛ: един запис, когато слезеш ---------- */
+let tripAsked=null,tripWho=null;
+function tripForm(m){
+  return `<label for="tkm">Километраж сега (на таблото)<input id="tkm" class="big-in" inputmode="decimal" placeholder="${m.val||0}" autocomplete="off" oninput="tDiff(${m.val||0})"></label>
+    <div id="tdiff" class="small muted"></div>
+    <label for="troute">Къде си ходил<input id="troute" placeholder="напр. Пловдив – Обект Север – Пловдив" autocomplete="off"></label>
+    <div id="task"></div><div id="oerr" class="err"></div>
+    <button class="btn pri" onclick="saveTrip('${m.id}')">Записвам курса</button>`;
+}
+function tDiff(prev){
+  const v=readNum('#tkm');tripAsked=null;tripWho=null;const a=$('#task');if(a)a.innerHTML='';
+  $('#tdiff').textContent=isNaN(v)||!(prev>0)?'':`Изминати от последния запис: ${nf(Math.round((v-prev)*10)/10)} км`;
+}
+function saveTrip(mid){
+  const m=M(mid),v=readNum('#tkm'),route=$('#troute').value.trim(),e=$('#oerr'),prev=m.val||0;
+  e.textContent='';
+  if(isNaN(v)){e.textContent='Въведи км от таблото.';return}
+  if(v<prev){e.textContent=`По-малко е от последното записано (${nf(prev)} км). Провери цифрите.`;return}
+  if(!route){e.textContent='Напиши къде си ходил.';return}
+  if(!jumpOk(v,prev,'км','#oerr',()=>saveTrip(mid)))return;
+  const diff=Math.round((v-prev)*10)/10;let own='';
+  if(prev>0&&diff>TRIP_ASK){
+    if(tripAsked!==v){
+      tripAsked=v;tripWho=null;
+      $('#task').innerHTML=`<div class="alert" style="font-weight:500">От последния запис${m.lastBy?' ('+esc(m.lastBy)+')':''} има <b>${nf(diff)} км</b>. Ти ли ги изкара всички?
+        <div class="btns" style="margin-top:10px"><button class="btn sm pri" onclick="tripWho=1;saveTrip('${mid}')">Да, аз</button>
+        <button class="btn sm" onclick="tripWho=0;$('#town').hidden=false;$('#townv').focus()">Не, карал е и друг</button></div>
+        <div id="town" hidden style="margin-top:10px;display:flex;flex-direction:column;gap:8px"><label for="townv">Колко км изкара ти?<input id="townv" class="big-in" inputmode="decimal" autocomplete="off"></label>
+        <button class="btn sm pri" onclick="tripWho=0;saveTrip('${mid}')">Записвам</button>
+        <div class="small">Останалите км ще се запишат като „незаписан пробег“.</div></div></div>`;
+      return;
+    }
+    if(tripWho===null)return;
+    if(tripWho===0){const o=readNum('#townv');if(isNaN(o)||o<0||o>diff){e.textContent=`Напиши колко км изкара ти (от 0 до ${nf(diff)}).`;return}own=o}
+  }
+  act('trip',{mid,val:v,route,own},{err:'#oerr',ok:'Курсът е записан.',then:()=>{jumpVal=null;tripAsked=null;tripWho=null;op={q:'',repair:false,done:null};me.role==='машинист'?render():go('home')}});
 }
 function drawOp(){const e=$('#opm');if(e)e.innerHTML=opMatch()}
 function opMatch(){
@@ -489,22 +560,25 @@ function opMatch(){
   const m=byNum(q);
   if(!m)return q.length>=5||!db.machines.some(x=>x.num.startsWith(q))?`<div class="err">Няма машина с номер ${esc(q)}. Провери номера.</div>`:`<div class="small muted">Довърши номера…</div>`;
   const card=`<div class="mcard"><span class="mono" style="font-size:1.6rem;font-weight:700">${esc(m.num)}</span><span>${esc(m.type)} · ${esc(m.model||'')}</span>
-    <span class="small muted">Последно: ${m.val>0?`<span class="mono">${nf(m.val)} ${m.unit}</span>`:'още няма — въведи от таблото'}</span></div>`;
+    <span class="small muted">${isVeh(m)?(m.val>0?`Последно записано: <span class="mono">${nf(m.val)} км</span>${m.lastBy?' · '+esc(m.lastBy):''}${m.lastAt?' · '+whenTxt(m.lastAt):''}`:'Още няма записан километраж')
+      :`Последно: ${m.val>0?`<span class="mono">${nf(m.val)} ${m.unit}</span>`:'още няма — въведи от таблото'}`}</span></div>`;
+  if(me.role!=='машинист'&&!isVeh(m))return card+`<div class="err">${esc(m.num)} не е автомобил. От тук се отчитат само курсове с бус, пикап или кола.</div>`;
   if(m.status==='спряна'&&!op.repair){
     return card+`<div class="alert">⚠ Машината е спряна.</div>
       <div class="btns"><button class="btn pri" onclick="op.repair=true;drawOp()">Помагам при ремонта</button>
       <button class="btn" onclick="op.q='';render();$('#onum').focus()">Друга машина</button></div>`;
   }
+  if(isVeh(m)&&!op.repair)return card+tripForm(m);
   const sites=db.sites.map(s=>s.name);
   if(m.location&&!sites.includes(m.location))sites.unshift(m.location);
   const rep=op.repair;
   return card+(rep?`<div class="chip c-warn" style="align-self:flex-start">Ремонт</div>`:'')+`
-    ${rep?'':`<label for="osite">Къде е машината
+    ${rep?'':isVeh(m)?`<label for="oroute">Маршрут<input id="oroute" placeholder="напр. Пловдив – Обект Север" autocomplete="off"></label>`:`<label for="osite">Къде е машината
       <select id="osite">${!sites.length?'<option value="">—</option>':!m.location?'<option value="" selected>— избери къде е —</option>':''}${sites.map(s=>`<option ${s===m.location?'selected':''}>${esc(s)}</option>`).join('')}</select></label>`}
     <label for="oval">${unitIn(m.unit)} сега${rep?' (по желание)':''}
       <input id="oval" class="big-in" inputmode="decimal" placeholder="${m.val||0}" autocomplete="off"></label>
     <div id="oerr" class="err"></div>
-    <button class="btn pri" onclick="startShift('${m.id}')">${rep?'Започвам ремонта':'Започвам'}</button>`;
+    <button class="btn pri" onclick="startShift('${m.id}')">${rep?'Започвам ремонта':isVeh(m)?'Тръгвам':'Започвам'}</button>`;
 }
 /* Проверка за голям скок: при повече от това за една смяна питаме „Сигурен ли си?“ */
 const JUMP={'мч':24,'км':1500};
@@ -522,56 +596,63 @@ function startShift(mid){
   if(!rep&&isNaN(v)){e.textContent='Въведи показанието от таблото.';return}
   if(!isNaN(v)&&v<(m.val||0)){e.textContent=`По-малко е от последното (${nf(m.val)} ${m.unit}). Провери цифрите.`;return}
   if(!isNaN(v)&&!jumpOk(v,m.val||0,m.unit,'#oerr',()=>startShift(mid)))return;
-  const site=$('#osite')?$('#osite').value:'';
-  if(!rep&&!site&&db.sites.length){e.textContent='Избери къде е машината.';return}
-  act('start',{mid,val:isNaN(v)?'':v,site,kind:rep?'ремонт':'работа'},{err:'#oerr',ok:'Записано. Приятна работа!',then:()=>{jumpVal=null;op={q:'',repair:false,done:null};render()}});
+  const veh=isVeh(m),site=!veh&&$('#osite')?$('#osite').value:'',route=veh&&$('#oroute')?$('#oroute').value.trim():'';
+  if(!veh&&!rep&&!site&&db.sites.length){e.textContent='Избери къде е машината.';return}
+  act('start',{mid,val:isNaN(v)?'':v,site,route,kind:rep?'ремонт':'работа'},{err:'#oerr',ok:veh?'Записано. Приятен път!':'Записано. Приятна работа!',
+    then:()=>{jumpVal=null;op={q:'',repair:false,done:null};me.role==='машинист'?render():go('home')}});
 }
 function endView(sh){
-  const m=M(sh.machineId),rep=sh.kind==='ремонт';
-  return `<section class="shift"><span class="lbl">${rep?'Помагаш при ремонт на':'Ти си на машина'}</span>
+  const m=M(sh.machineId),rep=sh.kind==='ремонт',veh=isVeh(m)&&!rep;
+  return `${me.role!=='машинист'?`<button class="back" onclick="go('home')">← Назад</button>`:''}<section class="shift"><span class="lbl">${rep?'Помагаш при ремонт на':veh?'Ти си на път с':'Ти си на машина'}</span>
       <div class="mnum">${esc(m.num)}</div><div>${esc(m.type)} · ${esc(m.model||'')}</div>
-      <div class="small" style="opacity:.8">От ${fmtT(sh.startAt)}${sh.startVal!=null?` при <span class="mono">${nf(sh.startVal)} ${m.unit}</span>`:''} · ${esc(m.location||'')}</div></section>
-    <section class="card"><h2>Приключвам</h2>
+      <div class="small" style="opacity:.8">От ${fmtT(sh.startAt)}${sh.startVal!=null?` при <span class="mono">${nf(sh.startVal)} ${m.unit}</span>`:''}${veh?(sh.route?' · '+esc(sh.route):''):' · '+esc(m.location||'')}</div></section>
+    <section class="card"><h2>${veh?'Пристигам':'Приключвам'}</h2>
+    ${veh?`<label for="eroute">Маршрут<input id="eroute" value="${esc(sh.route||'')}" placeholder="откъде – докъде" autocomplete="off"></label>`:''}
     <label for="eval">${unitIn(m.unit)} сега${rep?' (по желание)':''}
-      <input id="eval" class="big-in" inputmode="decimal" autocomplete="off" placeholder="${sh.startVal??m.val??0}" oninput="eDiff(${sh.startVal??'null'},'${m.unit}')"></label>
+      <input id="eval" class="big-in" inputmode="decimal" autocomplete="off" placeholder="${sh.startVal??m.val??0}" oninput="eDiff(${sh.startVal??'null'},'${m.unit}',${veh?1:0})"></label>
     <div id="ediff" class="small muted"></div><div id="eerr" class="err"></div>
-    <button class="btn pri" onclick="endShift()">Приключвам смяната</button></section>`;
+    <button class="btn pri" onclick="endShift()">${veh?'Пристигнах':'Приключвам смяната'}</button></section>`;
 }
-function eDiff(s,u){const v=readNum('#eval');$('#ediff').textContent=isNaN(v)||s==null?'':`За смяната: ${nf(Math.round((v-s)*10)/10)} ${u}`}
+function eDiff(s,u,veh){const v=readNum('#eval');$('#ediff').textContent=isNaN(v)||s==null?'':`${veh?'За курса':'За смяната'}: ${nf(Math.round((v-s)*10)/10)} ${u}`}
 function endShift(){
-  const sh=db.shifts.find(s=>s.endAt==null),m=M(sh.machineId),v=readNum('#eval'),rep=sh.kind==='ремонт';
+  const sh=myOpen(),m=M(sh.machineId),v=readNum('#eval'),rep=sh.kind==='ремонт',veh=isVeh(m)&&!rep;
   if(!rep&&isNaN(v)){$('#eerr').textContent='Въведи показанието от таблото.';return}
   const min=sh.startVal??m.val??0;
   if(!isNaN(v)&&v<min){$('#eerr').textContent=`Не може да е по-малко от ${nf(min)} ${m.unit}.`;return}
   if(!isNaN(v)&&!jumpOk(v,min,m.unit,'#eerr',endShift))return;
   const done={num:m.num,type:m.type,unit:m.unit,from:sh.startVal,to:isNaN(v)?null:v};
-  act('end',{val:isNaN(v)?'':v},{err:'#eerr',then:()=>{jumpVal=null;op.done=done;render()}});
+  const route=veh&&$('#eroute')?$('#eroute').value.trim():undefined;
+  act('end',{val:isNaN(v)?'':v,route},{err:'#eerr',ok:veh?'Курсът е записан.':undefined,then:()=>{jumpVal=null;
+    if(me.role!=='машинист'){op={q:'',repair:false,done:null};go('home')}
+    else if(veh){op={q:'',repair:false,done:null};render()}      // след буса — направо към машината
+    else{op.done=done;render()}}});
 }
 
 /* ---------- НАЧАЛО: ръководител / администратор ---------- */
 function homeView(){
-  const types=[...new Set(db.machines.map(m=>m.type))].sort((a,b)=>a.localeCompare(b,'bg'));
+  const veh=hasVeh()&&homeCat==='автомобил',cm=CM();
+  const types=[...new Set(cm.map(m=>m.type))].sort((a,b)=>a.localeCompare(b,'bg'));
   const t=view.type||'';
   let typeBlock='';
   if(t){
-    const ms=db.machines.filter(m=>m.type===t).sort((a,b)=>(a.location||'').localeCompare(b.location||'','bg')||a.num.localeCompare(b.num));
+    const ms=cm.filter(m=>m.type===t).sort((a,b)=>(a.location||'').localeCompare(b.location||'','bg')||a.num.localeCompare(b.num));
     const per={};ms.forEach(m=>{const k=m.location||'—';per[k]=(per[k]||0)+1});
     const st=ms.filter(m=>m.status==='спряна').length;
     typeBlock=`<div><b>${ms.length} бр.</b>${st?` · <span style="color:var(--bad)">${st} спрени</span>`:''}</div>
       <div class="sumline">${Object.entries(per).map(([k,n])=>`<span class="chip c-n">${esc(k)}: ${n}</span>`).join('')}</div>
       <div class="list">${ms.map(mRow).join('')}</div>`;
   }
-  return `${faultTiles()}<section class="card"><h2>Търси машина</h2>
+  return `${driveBanner()}${catBar()}${faultTiles()}<section class="card"><h2>Търси по номер</h2>
     <label for="mq">Вътрешен номер
       <input id="mq" class="numin" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0000" autocomplete="off" oninput="this.value=this.value.replace(/\\D/g,'');$('#mres').innerHTML=mSearch(this.value)" onkeydown="if(event.key==='Enter'){const m=byNum(this.value);if(m)go('machine',{id:m.id})}"></label>
     <div id="mres" class="list"></div></section>
-  ${sitesSummary()}
-  <section class="card"><label for="mtype">Вид машина
-    <select id="mtype" onchange="view.type=this.value;render()"><option value="">— избери, ако искаш списък —</option>${types.map(x=>`<option value="${esc(x)}" ${x===t?'selected':''}>${esc(x)} (${db.machines.filter(m=>m.type===x).length})</option>`).join('')}</select></label>
+  ${veh?'':sitesSummary()}
+  <section class="card"><label for="mtype">${veh?'Вид автомобил':'Вид машина'}
+    <select id="mtype" onchange="view.type=this.value;render()"><option value="">— избери, ако искаш списък —</option>${types.map(x=>`<option value="${esc(x)}" ${x===t?'selected':''}>${esc(x)} (${cm.filter(m=>m.type===x).length})</option>`).join('')}</select></label>
     ${typeBlock}</section>
-  ${(()=>{const due=db.machines.filter(m=>{const s=svc(m);return s&&s.due}).sort((a,b)=>svc(a).left-svc(b).left);
+  ${(()=>{const due=cm.filter(m=>{const s=svc(m);return s&&s.due}).sort((a,b)=>svc(a).left-svc(b).left);
     return due.length?`<section class="card"><h3>За обслужване · ${due.length}</h3><div class="list">${due.map(mRow).join('')}</div></section>`:''})()}
-  ${isA()?`<button class="btn" onclick="go('machineForm')">+ Добави машина</button>`:''}
+  ${isA()?`<button class="btn" onclick="go('machineForm',{cat:'${veh?'автомобил':'машина'}'})">+ Добави ${veh?'автомобил':'машина'}</button>`:''}
   ${db.machines.length?`<button class="btn" onclick="machinesCsv()">⬇ Всички машини за Excel</button>`:''}
   ${(db.transfers||[]).length?`<button class="btn" onclick="transfersCsv()">⬇ Всички протоколи за Excel</button>`:''}
   ${isA()&&db.backup?`<div class="bkline"><span>Резервно копие: <b>${db.backup.at?fmt(db.backup.at):'още няма'}</b>${db.backup.err?`<br><span style="color:var(--bad)">Последният опит не успя: ${esc(db.backup.err)}</span>`:''}</span>
@@ -584,8 +665,8 @@ const openSites=new Set();
 let retOpen=false;
 function siteTg(el){el.open?openSites.add(el.dataset.k):openSites.delete(el.dataset.k)}
 function sitesSummary(){
-  if(!db.machines.length)return '';
-  const by={};db.machines.forEach(m=>{const k=m.location||'';(by[k]=by[k]||[]).push(m)});
+  if(!CM().length)return '';
+  const by={};CM().forEach(m=>{const k=m.location||'';(by[k]=by[k]||[]).push(m)});
   const names=db.sites.map(s=>s.name);
   Object.keys(by).forEach(k=>{if(k&&!names.includes(k))names.push(k)});
   names.sort((a,b)=>(by[b]||[]).length-(by[a]||[]).length||a.localeCompare(b,'bg'));
@@ -605,12 +686,13 @@ function sitesSummary(){
 /* ---------- ПОВРЕДИ И СПРЕНИ (ръководител и администратор) ---------- */
 const openDmg=mid=>db.damages.filter(d=>d.machineId===mid&&d.status!=='поправена').sort((a,b)=>a.at-b.at);
 function faultLists(){
-  const withD=db.machines.filter(m=>m.status!=='спряна'&&openDmg(m.id).length);   // повредени, но работят
-  const stopped=db.machines.filter(m=>m.status==='спряна');
+  const cm=CM();
+  const withD=cm.filter(m=>m.status!=='спряна'&&openDmg(m.id).length);   // повредени, но работят
+  const stopped=cm.filter(m=>m.status==='спряна');
   const since=m=>{const d=openDmg(m.id)[0];return d?d.at:Infinity};
   const sort=l=>l.sort((a,b)=>since(a)-since(b)||a.num.localeCompare(b.num));   // най-отдавна повредените отгоре
   // без работа днес: не са спрени, но днес никой не е започнал смяна на тях
-  const t0=today0(),idle=db.machines.filter(m=>m.status!=='спряна'&&!(m.lastAt>=t0))
+  const t0=today0(),idle=cm.filter(m=>m.status!=='спряна'&&!(m.lastAt>=(isVeh(m)?t0-864e5:t0)))   // автомобилите — без курс днес и вчера
     .sort((a,b)=>(a.lastAt?0:1)-(b.lastAt?0:1)||(a.lastAt||0)-(b.lastAt||0)||a.num.localeCompare(b.num));
   return {withD:sort(withD),stopped:sort(stopped),idle};
 }
@@ -645,6 +727,7 @@ function faultsView(){
   <div class="segbar s3"><button class="${tab==='dmg'?'on':''}" onclick="view.tab='dmg';render()">С повреди · ${f.withD.length}</button><button class="${tab==='stop'?'on':''}" onclick="view.tab='stop';render()">Спрени · ${f.stopped.length}</button><button class="${tab==='idle'?'on':''}" onclick="view.tab='idle';render()">Без работа · ${f.idle.length}</button></div>
   <div class="small muted">${tab==='dmg'?'Машини с неотстранена повреда, които още работят. Спрените са в „Спрени“. Най-отдавна повредените са отгоре.'
     :tab==='stop'?'Машини, отбелязани като спрени. Най-отдавна спрелите са отгоре.'
+    :hasVeh()&&homeCat==='автомобил'?'Автомобили, които не са спрени, без записан курс днес и вчера. Най-отдавна неползваните са отгоре.'
     :'Машини, които не са спрени, но днес още никой не е започнал смяна на тях. Най-отдавна неработилите са отгоре.'}</div>
   ${list.length?`<div class="list">${list.map(tab==='idle'?idleCard:faultCard).join('')}</div>`
     :`<div class="okbox">${tab==='dmg'?'Няма машини с повреди.':tab==='stop'?'Няма спрени машини.':'Днес всички машини, които не са спрени, имат започната смяна.'}</div>`}`;
@@ -652,8 +735,11 @@ function faultsView(){
 function ordBg(n){const t=n%100,u=n%10;return n+'-'+(t>=11&&t<=19?'ти':u===1?'ви':u===2?'ри':u===7||u===8?'ми':'ти')}
 function idleCard(m){
   const n=m.lastAt?Math.max(1,Math.floor((today0()-new Date(m.lastAt).setHours(0,0,0,0))/864e5)):0;
-  const chip=n?`<span class="chip ${n>=3?'c-bad':n===2?'c-warn':'c-n'}">${ordBg(n)} ден без работа</span>`:'<span class="chip c-n">не е работила в приложението</span>';
-  return `<div class="fcard">${mRow(m)}<div style="padding:0 6px 4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">${chip}${n?`<span class="small muted">последна смяна ${fmt(m.lastAt)}</span>`:''}</div></div>`;
+  const v=isVeh(m);
+  const chip=!n?`<span class="chip c-n">${v?'няма записан курс':'не е работила в приложението'}</span>`
+    :v?`<span class="chip ${n>=4?'c-bad':'c-warn'}">${n} дни без курс</span>`
+    :`<span class="chip ${n>=3?'c-bad':n===2?'c-warn':'c-n'}">${ordBg(n)} ден без работа</span>`;
+  return `<div class="fcard">${mRow(m)}<div style="padding:0 6px 4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">${chip}${n?`<span class="small muted">${v?'последен курс':'последна смяна'} ${fmt(m.lastAt)}${m.lastBy?' · '+esc(m.lastBy):''}</span>`:''}</div></div>`;
 }
 function faultsCsv(){
   if(fTab()==='idle'){
@@ -706,7 +792,7 @@ function machineView(id){
     <dl class="kv"><dt>Къде е</dt><dd><b>${esc(m.location||'—')}</b></dd>${m.from||m.fromProt?`<dt>Взета от</dt><dd>${esc(m.from||'—')}${protTxt(m.fromProt,m.fromProtAt)}</dd>`:''}
     ${(()=>{const s=svc(m);if(!s)return '';
       if(s.none)return `<dt>Обслужване</dt><dd><span class="muted">няма записано обслужване</span></dd>`;
-      return `<dt>Обслужване</dt><dd>следващото при <b class="mono">${nf(s.next)} мч</b> · ${s.over?`<span style="color:var(--bad);font-weight:600">просрочено с ${nf(-s.left)} мч</span>`:s.due?`<span style="color:var(--warn);font-weight:600">след ${nf(s.left)} мч</span>`:`след ${nf(s.left)} мч`}</dd>`})()}
+      return `<dt>Обслужване</dt><dd>следващото при <b class="mono">${nf(s.next)} ${s.u}</b> · ${s.over?`<span style="color:var(--bad);font-weight:600">просрочено с ${nf(-s.left)} ${s.u}</span>`:s.due?`<span style="color:var(--warn);font-weight:600">след ${nf(s.left)} ${s.u}</span>`:`след ${nf(s.left)} ${s.u}`}</dd>`})()}
     <dt>Сега</dt><dd>${cur?`${esc(cur.user||'')}${cur.kind==='ремонт'?' (ремонт)':''}, от ${fmt(cur.startAt)}`:'Никой не е на машината'}</dd></dl>
     ${A?`<div class="btns">${stBtn}<button class="btn sm" onclick="go('machineForm',{id:'${id}'})">Промени данните</button></div>`:''}</section>
 
@@ -724,7 +810,7 @@ function machineView(id){
   <section class="card"><h3>Къде е била</h3>
     ${!full?'<div class="empty">Зареждане…</div>':placesHtml(id)}</section>
 
-  <section class="card"><h3>Кой я е карал</h3>
+  <section class="card"><h3>${isVeh(m)?'Пътна книжка':'Кой я е карал'}</h3>
     ${!full?'<div class="empty">Зареждане…</div>':shs.length?`<div>${shs.map(s=>shiftRow(s,m)).join('')}</div>`:'<div class="empty">Няма записани смени.</div>'}
     ${full&&full.length>lim?`<button class="btn sm" onclick="view.shN=${lim+SH_PAGE};render()">Покажи още (${full.length-lim} по-стари)</button>`:''}</section>`;
 }
@@ -743,9 +829,10 @@ function shiftRow(s,m){
   const diff=s.startVal!=null&&s.endVal!=null?` · +${nf(Math.round((s.endVal-s.startVal)*10)/10)}`:'';
   const endTxt=s.endAt==null?'още работи':s.endVal!=null?`${nf(s.endVal)} ${m.unit}`:'?';
   const kick=s.endAt==null&&isA()?(confirmKey==='end'+s.id?` <button class="btn sm danger" onclick="act('endShift',{sid:'${s.id}'},{ok:'Смяната е приключена.'})">Да, приключи</button>`:` <button class="btn sm" onclick="confirmKey='end${s.id}';render()">Приключи</button>`):'';
-  return `<div class="sh"><span class="d">${fmtD(s.startAt)}</span><span class="w">${esc(s.user||'')}</span>${s.kind==='ремонт'?'<span class="chip c-warn">ремонт</span>':'<span></span>'}
+  return `<div class="sh"><span class="d">${fmtD(s.startAt)}</span><span class="w">${esc(s.user||'')}</span>${s.kind==='ремонт'?'<span class="chip c-warn">ремонт</span>':s.kind==='незаписан'?'<span class="chip c-bad">незаписан</span>':'<span></span>'}
     <span class="v">${s.startVal!=null?nf(s.startVal):'—'} → ${endTxt}${diff}${kick}${isA()?` <button class="btn sm" onclick="go('shiftForm',{mid:'${m.id}',sid:'${s.id}'})">Поправи</button>`:''}</span>
     ${s.site?`<span class="x">📍 ${esc(s.site)}</span>`:''}
+    ${isVeh(m)?`<span class="x">🕒 ${tripTime(s)}${s.route?' · 🧭 '+esc(s.route):''}</span>`:''}
     ${s.auto?`<span class="x">приключена автоматично${s.endVal==null&&s.endAt!=null?' · крайното ще се попълни при следващото качване':''}</span>`:''}</div>`;
 }
 function loadShifts(id){
@@ -765,7 +852,7 @@ function shiftForm(){
       oninput="this.value=this.value.replace(/\\D/g,'');const x=byNum(this.value);$('#snm').textContent=x?x.type+' '+(x.model||'')+' · '+(x.unit==='км'?'километри':'моточасове'):'—'"></label>
     <div id="snm" class="small muted">${esc(m.type)} ${esc(m.model||'')} · ${m.unit==='км'?'километри':'моточасове'}</div>
     <label for="skind">Вид<select id="skind"><option value="работа" ${s.kind!=='ремонт'?'selected':''}>Работа</option><option value="ремонт" ${s.kind==='ремонт'?'selected':''}>Помощ при ремонт</option></select></label>
-    <label for="ssite">Обект<select id="ssite">${siteOptions(s.site)}</select></label>
+    ${isVeh(m)?`<label for="sroute">Маршрут<input id="sroute" value="${esc(s.route||'')}" autocomplete="off"></label>`:`<label for="ssite">Обект<select id="ssite">${siteOptions(s.site)}</select></label>`}
     <label for="ssv">Начално показание<input id="ssv" class="big-in" inputmode="decimal" value="${s.startVal??''}" autocomplete="off"></label>
     ${s.endAt!=null?`<label for="sev">Крайно показание<input id="sev" class="big-in" inputmode="decimal" value="${s.endVal??''}" autocomplete="off"></label>`
       :`<div class="small muted">Смяната още не е приключена — крайното се въвежда при приключване.</div>`}
@@ -780,7 +867,7 @@ function saveShiftFix(){
   if(!byNum(num)){e.textContent='Няма машина с номер '+num+'.';return}
   if(kind==='работа'&&sv===''){e.textContent='Въведи началното показание.';return}
   if(sv!==''&&ev!==''&&Number(ev)<Number(sv)){e.textContent='Крайното не може да е по-малко от началното.';return}
-  act('editShift',{sid:view.sid,num,kind,site:$('#ssite').value,startVal:sv,endVal:ev},
+  act('editShift',{sid:view.sid,num,kind,site:$('#ssite')?$('#ssite').value:'',route:$('#sroute')?$('#sroute').value.trim():undefined,startVal:sv,endVal:ev},
     {err:'#sferr',ok:'Смяната е поправена.',then:()=>{const x=byNum(num);go('machine',{id:x?x.id:view.mid})}});
 }
 function delShiftGo(){
@@ -796,13 +883,16 @@ function siteOptions(cur){
 function machineForm(){
   const m=view.id?M(view.id):null;
   const types=[...new Set(db.machines.map(x=>x.type))];
+  const fc=m?(m.cat||'машина'):(view.cat||'машина'),fv=fc==='автомобил';
   return `<button class="back" onclick="${m?`go('machine',{id:'${m.id}'})`:`go('home')`}">← Назад</button>
-  <section class="card"><h2>${m?'Промени машина':'Нова машина'}</h2>
-    <label for="fnum">Вътрешен номер (4 или 5 цифри)<input id="fnum" class="mono" inputmode="numeric" maxlength="5" value="${esc(m?.num)}" placeholder="напр. 0123" autocomplete="off"></label>
+  <section class="card"><h2>${m?(fv?'Промени автомобил':'Промени машина'):(fv?'Нов автомобил':'Нова машина')}</h2>
+    <label for="fcat">Категория<select id="fcat" onchange="fcatCh()"><option value="машина" ${!fv?'selected':''}>Машина</option><option value="автомобил" ${fv?'selected':''}>Автомобил (бус, пикап, кола)</option></select></label>
+    <label for="fnum">Вътрешен номер (4 или 5 цифри)<input id="fnum" class="mono" inputmode="numeric" maxlength="5" value="${esc(m?.num)}" placeholder="${fv?'започва с 9, напр. 91234':'напр. 0123'}" autocomplete="off"></label>
     <label for="ftype">Вид<input id="ftype" list="tl" value="${esc(m?.type)}" placeholder="напр. Багер"></label>
     <datalist id="tl">${types.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
     <label for="fmodel">Марка и модел<input id="fmodel" value="${esc(m?.model)}" placeholder="напр. CAT 320"></label>
-    <label for="funit">Отчита<select id="funit"><option value="мч" ${m?.unit!=='км'?'selected':''}>Моточасове</option><option value="км" ${m?.unit==='км'?'selected':''}>Километри</option></select></label>
+    <label for="funit">Отчита<select id="funit" onchange="fcatCh()" ${fv?'disabled':''}><option value="мч" ${!fv&&m?.unit!=='км'?'selected':''}>Моточасове</option><option value="км" ${fv||m?.unit==='км'?'selected':''}>Километри</option></select></label>
+    <label for="fsvc" id="svcbox" ${fv||m?.unit==='км'?'':'hidden'}>Обслужване на всеки … км (по желание)<input id="fsvc" class="mono" inputmode="numeric" value="${m?.svcKm??''}" placeholder="напр. 15000" autocomplete="off"></label>
     <label for="fval">Показание сега<input id="fval" class="big-in" inputmode="decimal" value="${m?m.val??'':''}" placeholder="0"></label>
     <label for="floc">Къде е<select id="floc">${siteOptions(m?.location)}</select></label>
     <label for="ffrom">Взета от (фирма)<input id="ffrom" value="${esc(m?.from)}" placeholder="празно = нова машина" autocomplete="off"${!m?` oninput="$('#recvbox').hidden=!this.value.trim()"`:''}></label>
@@ -839,13 +929,20 @@ function retireGo(id){
   if(rmWhy==='прехвърлена'){const e=protCheck('#rmp','#rmpd');if(e){$('#rmerr').textContent=e;return}}
   act('retireMachine',{id,reason:rmWhy,to,prot:$('#rmp')?$('#rmp').value.trim():'',protAt:$('#rmpd')?$('#rmpd').value:'',photos:rmWhy==='прехвърлена'?ph.map(p=>p.id):[]},{err:'#rmerr',ok:'Машината е изведена от парка.',then:()=>{rmWhy='';go('home')}});
 }
+function fcatCh(){
+  const v=$('#fcat').value==='автомобил',u=$('#funit');
+  if(v)u.value='км';u.disabled=v;
+  $('#svcbox').hidden=!(v||u.value==='км');
+  $('#fnum').placeholder=v?'започва с 9, напр. 91234':'напр. 0123';
+}
 function saveMachine(){
   const g=s=>$(s).value.trim(),num=g('#fnum');
   if(!/^\d{4,5}$/.test(num)){$('#ferr').textContent='Номерът трябва да е 4 или 5 цифри.';return}
   if(!g('#ftype')){$('#ferr').textContent='Въведи вид на машината.';return}
+  if(g('#fcat')==='автомобил'&&num[0]!=='9'){$('#ferr').textContent='Номерът на автомобил трябва да започва с 9.';return}
   const recv=!view.id&&g('#ffrom');
   if(recv){const e=protCheck('#ffp','#ffpd');if(e){$('#ferr').textContent=e;return}}
-  act('saveMachine',{id:view.id||null,num,type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst'),from:g('#ffrom'),
+  act('saveMachine',{id:view.id||null,num,cat:g('#fcat'),svcKm:g('#fsvc'),type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst'),from:g('#ffrom'),
     protNo:recv?g('#ffp'):'',protAt:recv?g('#ffpd'):'',photos:recv?ph.map(p=>p.id):[]},
     {err:'#ferr',ok:'Машината е записана.',then:()=>{const m=byNum(num);m?go('machine',{id:m.id}):go('home')}});
 }
@@ -882,7 +979,7 @@ function repairForm(){
   return `<button class="back" onclick="go('machine',{id:'${m.id}'})">← Назад</button>
   <section class="card"><h2>${r?'Промени запис':'Ремонт или обслужване'}</h2>
     <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
-    <label for="rkind">Вид<select id="rkind"><option value="ремонт" ${r?.kind!=='обслужване'?'selected':''}>Ремонт</option><option value="обслужване" ${r?.kind==='обслужване'?'selected':''}>Обслужване${m.unit==='мч'?` (на всеки ${SVC_EVERY} мч)`:''}</option></select></label>
+    <label for="rkind">Вид<select id="rkind"><option value="ремонт" ${r?.kind!=='обслужване'?'selected':''}>Ремонт</option><option value="обслужване" ${r?.kind==='обслужване'?'selected':''}>Обслужване${svcInt(m)?` (на всеки ${nf(svcInt(m).every)} ${svcInt(m).u})`:''}</option></select></label>
     <label for="rdate">Дата<input id="rdate" type="date" value="${iso(r?.at)}"></label>
     <label for="rsvc">Сервиз<input id="rsvc" list="svcl" value="${esc(r?.service)}" placeholder="напр. Сервиз „Хидротех“"></label>
     <datalist id="svcl">${services().map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
@@ -895,7 +992,7 @@ function saveRepair(){
   const s=$('#rsvc').value.trim(),t=$('#rtext').value.trim();
   if(!s||!t){$('#rerr').textContent='Попълни сервиза и какво е направено.';return}
   const mid=view.mid,kind=$('#rkind').value,val=$('#rval').value.trim().replace(',','.');
-  if(kind==='обслужване'&&M(mid).unit==='мч'&&!val){$('#rerr').textContent='За обслужване въведи моточасовете — от тях се смята следващото.';return}
+  if(kind==='обслужване'&&svcInt(M(mid))&&!val){$('#rerr').textContent=`За обслужване въведи ${M(mid).unit==='мч'?'моточасовете':'километрите'} — от тях се смята следващото.`;return}
   act('saveRepair',{id:view.rid||null,mid,date:$('#rdate').value,service:s,text:t,val,kind},
     {err:'#rerr',ok:'Записано.',then:()=>go('machine',{id:mid})});
 }
@@ -955,7 +1052,9 @@ function reportView(){
   const us=[...db.users].sort((a,b)=>(R[a.role]-R[b.role])||a.name.localeCompare(b.name,'bg'));
   const kind=rep.kind||'person';
   return `<section class="card"><h2>Справка за месец</h2>
-    <div class="segbar"><button class="${kind==='person'?'on':''}" onclick="rep.kind='person';rep.data=null;render()">По машинист</button><button class="${kind==='machine'?'on':''}" onclick="rep.kind='machine';rep.data=null;render()">По машина</button></div>
+    <div class="segbar ${hasVeh()?'s3':''}"><button class="${kind==='person'?'on':''}" onclick="rep.kind='person';rep.data=null;render()">По машинист</button><button class="${kind==='machine'?'on':''}" onclick="rep.kind='machine';rep.data=null;render()">По машина</button>${hasVeh()?`<button class="${kind==='trip'?'on':''}" onclick="rep.kind='trip';rep.data=null;render()">Пътна книжка</button>`:''}</div>
+    ${kind==='trip'?`<label for="rveh">Автомобил<select id="rveh"><option value="">Всички автомобили</option>${db.machines.filter(isVeh).sort((a,b)=>a.num.localeCompare(b.num)).map(m=>`<option value="${esc(m.num)}" ${rep.veh===m.num?'selected':''}>${esc(m.num)} · ${esc(m.type)} ${esc(m.model||'')}</option>`).join('')}</select></label>
+      <label for="rdrv">Шофьор<select id="rdrv"><option value="*">Всички шофьори</option>${us.map(u=>`<option value="${esc(u.id)}" ${rep.drv===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></label>`:''}
     ${kind==='person'?`<label for="ruser">Машинист<select id="ruser" onchange="rep.uid=this.value;rep.data=null;render()">
       <option value="">— избери —</option><option value="*" ${rep.uid==='*'?'selected':''}>Всички машинисти</option>
       ${us.map(u=>`<option value="${esc(u.id)}" ${u.id===rep.uid?'selected':''}>${esc(u.name)}${u.role!=='машинист'?' ('+esc(u.role)+')':''}</option>`).join('')}</select></label>`:''}
@@ -963,10 +1062,16 @@ function reportView(){
       ${monthOpts().map(([v,l])=>`<option value="${v}" ${v===rep.month?'selected':''}>${l}</option>`).join('')}</select></label>
     <div id="reperr" class="err"></div>
     <button class="btn pri" onclick="loadReport()">Покажи справката</button></section>
-  ${rep.data?(rep.data.kind==='machine'?machineReportBody():reportBody()):''}`;
+  ${rep.data?(rep.data.kind==='trip'?tripBody():rep.data.kind==='machine'?machineReportBody():reportBody()):''}`;
 }
 function loadReport(uid){
   if(busy)return;
+  if(rep.kind==='trip'&&!uid){
+    rep.veh=$('#rveh').value;rep.drv=$('#rdrv').value;rep.month=$('#rmonth').value;setBusy(true);
+    call('report',{uid:rep.drv||'*',month:rep.month}).then(r=>{setBusy(false);r.kind='trip';r.veh=rep.veh;rep.data=r;render()})
+      .catch(e=>{setBusy(false);if(e.message==='AUTH'){logout('Влез отново.');return}const el=$('#reperr');if(el)el.textContent=e.message;else toast(e.message)});
+    return;
+  }
   const mk=rep.kind==='machine'&&!uid;
   uid=mk?'*':uid||($('#ruser')?$('#ruser').value:'');const month=$('#rmonth').value;
   if(uid&&uid!=='*')rep.kind='person';
@@ -991,7 +1096,7 @@ function sumUp(list){
 }
 function totLine(t){return [t['мч']?`<b class="mono">${nf(t['мч'])} мч</b>`:'',t['км']?`<b class="mono">${nf(t['км'])} км</b>`:''].filter(Boolean).join(' · ')||'—'}
 function reportBody(){
-  const d=rep.data,list=d.shifts,all=d.uid==='*';
+  const d=rep.data,list=d.shifts.filter(s=>s.kind!=='незаписан'),all=d.uid==='*';
   const who=all?'Всички машинисти':((db.users.find(u=>u.id===d.uid)||{}).name||(list[0]&&list[0].user)||'');
   const head=`<div class="toolbar"><h2>${esc(who)} · ${monthLabel(d.month)}</h2>${list.length?`<button class="btn sm" onclick="reportCsv()">⬇ Свали за Excel</button>`:''}</div>`;
   if(!list.length)return `<section class="card">${head}<div class="empty">Няма записани смени за този месец.</div></section>`;
@@ -1012,7 +1117,7 @@ function reportBody(){
     ${byDay.map(g=>`<div class="rday"><div class="rdh">${WD[new Date(g.t).getDay()]} ${g.k}</div>
       ${g.l.map(s=>{const df=diffOf(s),h=hoursOf(s);return `<div class="ev ${s.kind==='ремонт'?'warn':s.endAt==null?'bad':'ok'}">
         <div class="h"><span class="num">${esc(s.num)}</span><span style="color:var(--ink);font-weight:600">${esc(s.type)} ${esc(s.model)}</span>${s.kind==='ремонт'?'<span class="chip c-warn">ремонт</span>':''}</div>
-        <div class="small">${fmtT(s.startAt)}–${s.endAt?fmtT(s.endAt):'…'}${h!=null?` (${nf(h)} ч)`:''}${s.site?` · 📍 ${esc(s.site)}`:''}</div>
+        <div class="small">${fmtT(s.startAt)}–${s.endAt?fmtT(s.endAt):'…'}${h!=null?` (${nf(h)} ч)`:''}${s.site?` · 📍 ${esc(s.site)}`:''}${s.route?` · 🧭 ${esc(s.route)}`:''}</div>
         <div class="mono small">${s.startVal!=null?nf(s.startVal):'—'} → ${s.endVal!=null?`${nf(s.endVal)} ${esc(s.unit)}`:s.endAt==null?'още работи':'?'}${df!=null?` · <b>+${nf(df)}</b>`:''}</div>
         ${s.auto?'<div class="small muted">приключена автоматично</div>':''}</div>`}).join('')}</div>`).join('')}</section>`;
 }
@@ -1023,8 +1128,8 @@ function machineRows(){
   const span=(now.getFullYear()===y&&now.getMonth()+1===mo)?now.getDate():new Date(y,mo-1,1)>now?0:dim;
   const by={};d.shifts.forEach(s=>{(by[s.num]=by[s.num]||[]).push(s)});
   const known=new Set(db.machines.map(m=>m.num)),gone={};
-  d.shifts.forEach(s=>{if(!known.has(s.num)&&!gone[s.num])gone[s.num]={id:'',num:s.num,type:s.type||'?',model:s.model||'',unit:s.unit||'мч',location:'изведена от парка'}});
-  const rows=[...db.machines,...Object.values(gone)].map(m=>{
+  d.shifts.forEach(s=>{if(s.cat!=='автомобил'&&!known.has(s.num)&&!gone[s.num])gone[s.num]={id:'',num:s.num,type:s.type||'?',model:s.model||'',unit:s.unit||'мч',location:'изведена от парка'}});
+  const rows=[...db.machines.filter(m=>!isVeh(m)),...Object.values(gone)].map(m=>{
     const l=by[m.num]||[],work=l.filter(s=>s.kind!=='ремонт');
     let sum=0;work.forEach(s=>{const x=diffOf(s);if(x!=null)sum+=x});
     return {m,days:new Set(work.map(s=>fmtD(s.startAt))).size,rd:new Set(l.filter(s=>s.kind==='ремонт').map(s=>fmtD(s.startAt))).size,
@@ -1267,21 +1372,55 @@ function retiredCsv(){
 }
 /* Целият машинен парк за Excel (инвентар). */
 function machinesCsv(){
-  const rows=[...db.machines].sort((a,b)=>a.type.localeCompare(b.type,'bg')||a.num.localeCompare(b.num)).map(m=>{
+  const rows=[...db.machines].sort((a,b)=>(a.cat||'').localeCompare(b.cat||'','bg')||a.type.localeCompare(b.type,'bg')||a.num.localeCompare(b.num)).map(m=>{
     const ds=db.damages.filter(d=>d.machineId===m.id&&d.status!=='поправена'),sv=svc(m),sh=openShiftOn(m.id);
-    return [`="${m.num}"`,m.type,m.model,m.unit==='км'?'километри':'моточасове',cn(m.val),m.location,m.status,
+    return [m.cat||'машина',`="${m.num}"`,m.type,m.model,m.unit==='км'?'километри':'моточасове',cn(m.val),m.location,m.status,
       ds.map(d=>`${fmtD(d.at)} ${d.text} (${d.status})`).join(' | '),
       sv&&!sv.none?cn(sv.last.val):'',sv&&!sv.none?cn(sv.next):'',sv&&!sv.none?cn(sv.left):sv&&sv.none?'няма записано':'',sh?sh.user:'',m.from||'',m.fromProt||'',m.fromProtAt?fmtD(m.fromProtAt):''];
   });
-  downloadCsv([['Номер','Вид','Марка и модел','Отчита','Показание','Обект','Състояние','Отворени повреди','Последно обслужване (мч)','Следващо обслужване (мч)','Остават до обслужване (мч)','Сега на машината','Взета от','Протокол приемане №','Дата приемане'],...rows],
+  downloadCsv([['Категория','Номер','Вид','Марка и модел','Отчита','Показание','Обект','Състояние','Отворени повреди','Последно обслужване','Следващо обслужване','Остават до обслужване','Сега на машината','Взета от','Протокол приемане №','Дата приемане'],...rows],
     `mashinen-park-${iso()}.csv`);
+}
+/* ---------- ПЪТНА КНИЖКА ---------- */
+function tripRows(){const d=rep.data;return d.shifts.filter(s=>s.cat==='автомобил'&&(!d.veh||s.num===d.veh))}
+function tripBody(){
+  const d=rep.data,list=tripRows();
+  const vm=d.veh&&db.machines.find(m=>m.num===d.veh),drv=d.uid&&d.uid!=='*'&&db.users.find(u=>u.id===d.uid);
+  const who=[vm?`${vm.num} ${vm.type}`:'Всички автомобили',drv?drv.name:'всички шофьори'].join(' · ');
+  const head=`<div class="toolbar"><h2>Пътна книжка · ${monthLabel(d.month)}</h2>${list.length?`<button class="btn sm" onclick="tripCsv()">⬇ Свали за Excel</button>`:''}</div><div class="small muted">${esc(who)}</div>`;
+  if(!list.length)return `<section class="card">${head}<div class="empty">Няма курсове за този месец.</div></section>`;
+  let tot=0;const byV={},byD={};
+  let gap=0;list.forEach(s=>{const k=diffOf(s);if(k!=null&&s.kind==='незаписан')gap+=k});
+  list.forEach(s=>{const k=diffOf(s);if(k==null)return;tot+=k;byV[s.num]=(byV[s.num]||0)+k;byD[s.user]=(byD[s.user]||0)+k});
+  const r1=x=>Math.round(x*10)/10;
+  const byDay=[];list.forEach(s=>{const k=fmtD(s.startAt),l=byDay[byDay.length-1];if(l&&l.k===k)l.l.push(s);else byDay.push({k,t:s.startAt,l:[s]})});
+  return `<section class="card">${head}
+    <dl class="kv"><dt>Курсове</dt><dd><b>${list.filter(s=>s.kind!=='незаписан').length}</b></dd><dt>Изминати</dt><dd><b class="mono">${nf(r1(tot))} км</b></dd>
+      ${gap?`<dt>Незаписан пробег</dt><dd><b class="mono" style="color:var(--bad)">${nf(r1(gap))} км</b></dd>`:''}</dl>
+    ${!d.veh&&Object.keys(byV).length>1?`<h3>По автомобили</h3><div>${Object.entries(byV).sort((a,b)=>b[1]-a[1]).map(([n,k])=>{const m=db.machines.find(x=>x.num===n)||{};return `<div class="sh"><span class="num">${esc(n)}</span><span class="w">${esc(m.type||'')} ${esc(m.model||'')}</span><span class="mono">${nf(r1(k))} км</span></div>`}).join('')}</div>`:''}
+    ${(!d.uid||d.uid==='*')&&Object.keys(byD).length>1?`<h3>По шофьори</h3><div>${Object.entries(byD).sort((a,b)=>b[1]-a[1]).map(([n,k])=>`<div class="sh"><span class="d"></span><span class="w">${esc(n)}</span><span class="mono">${nf(r1(k))} км</span></div>`).join('')}</div>`:''}</section>
+  <section class="card"><h3>По дни</h3>
+    ${byDay.map(g=>`<div class="rday"><div class="rdh">${WD[new Date(g.t).getDay()]} ${g.k}</div>
+      ${g.l.map(s=>{const k=diffOf(s);return `<div class="ev ${s.endAt==null?'bad':'ok'}">
+        <div class="h"><span class="num">${esc(s.num)}</span>${s.kind==='незаписан'?'<span class="chip c-bad">незаписан пробег</span>':`<b style="color:var(--ink)">${esc(s.user||'')}</b>`}</div>
+        <div class="small">${tripTime(s)}${s.route?` · 🧭 ${esc(s.route)}`:''}</div>
+        <div class="mono small">${s.startVal!=null?nf(s.startVal):'—'} → ${s.endVal!=null?nf(s.endVal)+' км':s.endAt==null?'на път':'?'}${k!=null?` · <b>+${nf(k)} км</b>`:''}</div>
+        ${s.auto?'<div class="small muted">приключен автоматично</div>':''}</div>`}).join('')}</div>`).join('')}</section>`;
+}
+function tripCsv(){
+  const d=rep.data,list=tripRows();
+  downloadCsv([['Дата','Ден','Шофьор','Автомобил №','Вид','Марка и модел','Тръгване','Пристигане','Начален км','Краен км','Изминати км','Маршрут','Бележка'],
+    ...list.map(s=>{const one=s.kind==='курс'||s.kind==='незаписан';return [fmtD(s.startAt),WD[new Date(s.startAt).getDay()],s.user,`="${s.num}"`,s.type,s.model,
+      one?'':fmtT(s.startAt),s.endAt?fmtT(s.endAt):'',cn(s.startVal),cn(s.endVal),cn(diffOf(s)),s.route||'',
+      [s.kind==='незаписан'?'незаписан пробег — никой не го е записал':'',s.auto?'приключен автоматично':'',s.endAt==null?'на път':''].filter(Boolean).join(', ')]})],
+    `patna-knizhka-${d.month}${d.veh?'-'+d.veh:''}.csv`);
 }
 function reportCsv(){
   const d=rep.data;if(!d||!d.shifts.length)return;
   const q=v=>{const s=String(v??'');if(/^="\d+"$/.test(s))return s;return /[;"\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
   const n=v=>v==null?'':String(v).replace('.',',');
   const rows=[['Дата','Ден','Машинист','Номер','Вид','Марка и модел','Обект','Начало','Край','Часове','Начално','Крайно','Разлика','Мярка','Бележка']];
-  d.shifts.forEach(s=>rows.push([fmtD(s.startAt),WD[new Date(s.startAt).getDay()],s.user,`="${s.num}"`,s.type,s.model,s.site,fmtT(s.startAt),s.endAt?fmtT(s.endAt):'',
+  d.shifts.filter(s=>s.kind!=='незаписан').forEach(s=>rows.push([fmtD(s.startAt),WD[new Date(s.startAt).getDay()],s.user,`="${s.num}"`,s.type,s.model,s.site,fmtT(s.startAt),s.endAt?fmtT(s.endAt):'',
     n(hoursOf(s)),n(s.startVal),n(s.endVal),n(diffOf(s)),s.unit,[s.kind==='ремонт'?'помощ при ремонт':'',s.auto?'приключена автоматично':'',s.endAt==null?'още работи':''].filter(Boolean).join(', ')]));
   const who=d.uid==='*'?'vsichki':String((db.users.find(u=>u.id===d.uid)||{}).name||'mashinist').replace(/[\\/:*?"<>|\s]+/g,'_');
   downloadCsv(rows,`spravka-${d.month}-${who}.csv`);
