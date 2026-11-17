@@ -190,6 +190,14 @@ label.phbtn{flex-direction:row;align-items:center;justify-content:center;color:v
 .vbody figcaption{font-size:.85rem;opacity:.85}.vbody a{color:#ffd66b}
 .drivebar{border-color:var(--accent);background:var(--accent-soft)}
 .bkline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-size:.85rem;color:var(--muted);padding:4px 2px}
+.docbar{border-color:var(--warn);background:var(--warn-soft)}.docbar.bad{border-color:var(--bad);background:var(--bad-soft)}.docbar .t{color:var(--ink)}
+.docrow{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:8px;align-items:center}
+.docrow[data-c="1"]{grid-template-columns:minmax(0,1fr) auto;padding-top:6px;border-top:1px dashed var(--line)}.docrow[data-c="1"] .dname{grid-column:1/-1}
+.docrow .chk{flex-direction:row;align-items:center;gap:10px;font-size:1rem;color:var(--ink);font-weight:500}
+.docrow .chk input{width:22px;height:22px;margin:0;flex-shrink:0;accent-color:var(--accent)}
+.docrow input[type=date]{padding:10px 8px}.docrow input:disabled{opacity:.4}
+.dline{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.dline:last-child{border-bottom:0}
+.docedit{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}.docedit input{width:150px;padding:8px}
 .chipbar{display:flex;flex-wrap:wrap;gap:6px}
 .chipbar button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:var(--bg);color:var(--muted);cursor:pointer}
 .chipbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -473,6 +481,7 @@ function render(){
      : v==='drive'?driveView()
      : v==='faults'?faultsView()
      : v==='retired'?retiredView()
+     : v==='docs'?docsView()
      : isA()&&v==='transferForm'?transferForm()
      : isA()&&v==='receiveBack'?receiveBack()
      : homeView();
@@ -642,7 +651,7 @@ function homeView(){
       <div class="sumline">${Object.entries(per).map(([k,n])=>`<span class="chip c-n">${esc(k)}: ${n}</span>`).join('')}</div>
       <div class="list">${ms.map(mRow).join('')}</div>`;
   }
-  return `${driveBanner()}${catBar()}${faultTiles()}<section class="card"><h2>Търси по номер</h2>
+  return `${docsBanner()}${driveBanner()}${catBar()}${faultTiles()}<section class="card"><h2>Търси по номер</h2>
     <label for="mq">Вътрешен номер
       <input id="mq" class="numin" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0000" autocomplete="off" oninput="this.value=this.value.replace(/\\D/g,'');$('#mres').innerHTML=mSearch(this.value)" onkeydown="if(event.key==='Enter'){const m=byNum(this.value);if(m)go('machine',{id:m.id})}"></label>
     <div id="mres" class="list"></div></section>
@@ -789,7 +798,7 @@ function machineView(id){
   return `<button class="back" onclick="go('home',{type:view.type})">← Назад</button>${ask}
   <section class="card"><div class="toolbar"><div class="mhead"><span class="mnum">${esc(m.num)}</span><span class="muted">${esc(m.type)} · ${esc(m.model||'')}</span></div>${stChip(m.status)}</div>
     <div class="meter"><span class="v">${nf(m.val)}</span><span class="u">${unitL(m.unit)}</span></div>
-    <dl class="kv"><dt>Къде е</dt><dd><b>${esc(m.location||'—')}</b></dd>${m.from||m.fromProt?`<dt>Взета от</dt><dd>${esc(m.from||'—')}${protTxt(m.fromProt,m.fromProtAt)}</dd>`:''}
+    <dl class="kv"><dt>Къде е</dt><dd><b>${esc(m.location||'—')}</b></dd>${m.plate?`<dt>Рег. номер</dt><dd><b class="mono">${esc(m.plate)}</b></dd>`:''}${m.vin?`<dt>VIN</dt><dd class="mono">${esc(m.vin)}</dd>`:''}${m.from||m.fromProt?`<dt>Взета от</dt><dd>${esc(m.from||'—')}${protTxt(m.fromProt,m.fromProtAt)}</dd>`:''}
     ${(()=>{const s=svc(m);if(!s)return '';
       if(s.none)return `<dt>Обслужване</dt><dd><span class="muted">няма записано обслужване</span></dd>`;
       return `<dt>Обслужване</dt><dd>следващото при <b class="mono">${nf(s.next)} ${s.u}</b> · ${s.over?`<span style="color:var(--bad);font-weight:600">просрочено с ${nf(-s.left)} ${s.u}</span>`:s.due?`<span style="color:var(--warn);font-weight:600">след ${nf(s.left)} ${s.u}</span>`:`след ${nf(s.left)} ${s.u}`}</dd>`})()}
@@ -805,6 +814,7 @@ function machineView(id){
     ${reps.length?reps.map(r=>`<div class="ev ok"><div class="h">${r.kind==='обслужване'?'<span class="chip c-ok">обслужване</span>':'<span class="chip c-n">ремонт</span>'}<b style="color:var(--ink)">${esc(r.service)}</b><span>${fmtD(r.at)}</span>${r.val!=null?`<span class="mono">при ${nf(r.val)} ${m.unit}</span>`:''}${ownedAt(id,r.at)?'':'<span class="chip c-warn">извън нашия период</span>'}</div><div>${esc(r.text)}</div>
       ${A?`<button class="btn sm" style="align-self:flex-start" onclick="go('repairForm',{mid:'${id}',rid:'${r.id}'})">Промени</button>`:''}</div>`).join(''):'<div class="empty">Няма записани ремонти.</div>'}</section>
 
+  ${docsSection(m)}
   ${transfersSection(m,A)}
 
   <section class="card"><h3>Къде е била</h3>
@@ -891,6 +901,8 @@ function machineForm(){
     <label for="ftype">Вид<input id="ftype" list="tl" value="${esc(m?.type)}" placeholder="напр. Багер"></label>
     <datalist id="tl">${types.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
     <label for="fmodel">Марка и модел<input id="fmodel" value="${esc(m?.model)}" placeholder="напр. CAT 320"></label>
+    <div class="pair"><label for="fplate">Рег. номер (ако има)<input id="fplate" value="${esc(m?.plate)}" placeholder="напр. РВ 1234 АК" autocomplete="off" style="text-transform:uppercase"></label>
+      <label for="fvin">Рама / VIN (ако има)<input id="fvin" value="${esc(m?.vin)}" autocomplete="off" style="text-transform:uppercase"></label></div>
     <label for="funit">Отчита<select id="funit" onchange="fcatCh()" ${fv?'disabled':''}><option value="мч" ${!fv&&m?.unit!=='км'?'selected':''}>Моточасове</option><option value="км" ${fv||m?.unit==='км'?'selected':''}>Километри</option></select></label>
     <label for="fsvc" id="svcbox" ${fv||m?.unit==='км'?'':'hidden'}>Обслужване на всеки … км (по желание)<input id="fsvc" class="mono" inputmode="numeric" value="${m?.svcKm??''}" placeholder="напр. 15000" autocomplete="off"></label>
     <label for="fval">Показание сега<input id="fval" class="big-in" inputmode="decimal" value="${m?m.val??'':''}" placeholder="0"></label>
@@ -899,6 +911,7 @@ function machineForm(){
     ${!m?`<div id="recvbox" class="protbox" hidden><div class="phl">Протокол за приемане — задължителен</div>
       <div class="pair"><label for="ffp">Протокол № (ако има)<input id="ffp" autocomplete="off"></label><label for="ffpd">Дата<input id="ffpd" type="date" value="${iso()}"></label></div>
       ${phField()}</div>`:`<div class="small muted">Протоколите за приемане и предаване са в досието на машината → „Протоколи“.</div>`}
+    ${docsField(m)}
     <label for="fst">Състояние<select id="fst"><option ${m?.status!=='спряна'?'selected':''}>работи</option><option ${m?.status==='спряна'?'selected':''}>спряна</option></select></label>
     <div id="ferr" class="err"></div>
     <div class="btns"><button class="btn pri" onclick="saveMachine()">Запази</button>
@@ -942,7 +955,7 @@ function saveMachine(){
   if(g('#fcat')==='автомобил'&&num[0]!=='9'){$('#ferr').textContent='Номерът на автомобил трябва да започва с 9.';return}
   const recv=!view.id&&g('#ffrom');
   if(recv){const e=protCheck('#ffp','#ffpd');if(e){$('#ferr').textContent=e;return}}
-  act('saveMachine',{id:view.id||null,num,cat:g('#fcat'),svcKm:g('#fsvc'),type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst'),from:g('#ffrom'),
+  act('saveMachine',{id:view.id||null,num,plate:g('#fplate'),vin:g('#fvin'),docs:readDocs(),cat:g('#fcat'),svcKm:g('#fsvc'),type:g('#ftype'),model:g('#fmodel'),unit:g('#funit'),val:g('#fval').replace(',','.'),location:g('#floc'),status:g('#fst'),from:g('#ffrom'),
     protNo:recv?g('#ffp'):'',protAt:recv?g('#ffpd'):'',photos:recv?ph.map(p=>p.id):[]},
     {err:'#ferr',ok:'Машината е записана.',then:()=>{const m=byNum(num);m?go('machine',{id:m.id}):go('home')}});
 }
@@ -1051,7 +1064,8 @@ function reportView(){
   const R={'машинист':0,'ръководител':1,'администратор':2};
   const us=[...db.users].sort((a,b)=>(R[a.role]-R[b.role])||a.name.localeCompare(b.name,'bg'));
   const kind=rep.kind||'person';
-  return `<section class="card"><h2>Справка за месец</h2>
+  return `<button class="btn" onclick="go('docs',{from:'report'})">📄 Документи и срокове</button>
+  <section class="card"><h2>Справка за месец</h2>
     <div class="segbar ${hasVeh()?'s3':''}"><button class="${kind==='person'?'on':''}" onclick="rep.kind='person';rep.data=null;render()">По машинист</button><button class="${kind==='machine'?'on':''}" onclick="rep.kind='machine';rep.data=null;render()">По машина</button>${hasVeh()?`<button class="${kind==='trip'?'on':''}" onclick="rep.kind='trip';rep.data=null;render()">Пътна книжка</button>`:''}</div>
     ${kind==='trip'?`<label for="rveh">Автомобил<select id="rveh"><option value="">Всички автомобили</option>${db.machines.filter(isVeh).sort((a,b)=>a.num.localeCompare(b.num)).map(m=>`<option value="${esc(m.num)}" ${rep.veh===m.num?'selected':''}>${esc(m.num)} · ${esc(m.type)} ${esc(m.model||'')}</option>`).join('')}</select></label>
       <label for="rdrv">Шофьор<select id="rdrv"><option value="*">Всички шофьори</option>${us.map(u=>`<option value="${esc(u.id)}" ${rep.drv===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></label>`:''}
@@ -1206,6 +1220,119 @@ function machineReportCsv(){
   downloadCsv([['Номер','Вид','Марка и модел','Обект сега','Дни работа','Дни в периода','Дни помощ при ремонт','Общо','Мярка','Смени'],
     ...rows.map(r=>[`="${r.m.num}"`,r.m.type,r.m.model,r.m.location,r.days,span,r.rd,cn(r.sum),r.m.unit,r.n])],`mashini-${rep.data.month}.csv`);
 }
+/* ---------- ДОКУМЕНТИ И СРОКОВЕ ----------
+   На всяка машина: отметнати документи с „валиден до“. Само администраторът отмята; датата сменят и ръководителите. */
+const DOC_TYPES=['Винетка','Гражданска отговорност','Технически преглед','КТИ','Каско','Тахограф','Технически надзор'];
+const DOC_SOON=30;                                            // „изтича до месец“ = до 30 дни
+function docsOf(m){try{const l=JSON.parse(m.docs||'[]');return Array.isArray(l)?l:[]}catch(e){return []}}
+const isoT=d=>{const p=String(d).split('-');return new Date(+p[0],+p[1]-1,+p[2]).getTime()};
+const fmtIso=d=>{const p=String(d).split('-');return `${p[2]}.${p[1]}.${p[0]}`};
+function docState(x){
+  if(!x.d)return {k:'missing',n:null,txt:'липсва дата',cls:'c-bad'};
+  const n=Math.round((isoT(x.d)-today0())/864e5);
+  if(n<0)return {k:'expired',n,txt:`изтекъл преди ${-n} ${-n===1?'ден':'дни'}`,cls:'c-bad'};
+  if(n<=DOC_SOON)return {k:'soon',n,txt:n===0?'изтича днес':`изтича след ${n} ${n===1?'ден':'дни'}`,cls:'c-warn'};
+  return {k:'ok',n,txt:'валиден',cls:'c-ok'};
+}
+function allDocs(){const out=[];db.machines.forEach(m=>docsOf(m).forEach(x=>out.push({m,x,s:docState(x)})));return out}
+function docsBanner(){
+  const l=allDocs(),e=l.filter(r=>r.s.k==='expired').length,so=l.filter(r=>r.s.k==='soon').length,mi=l.filter(r=>r.s.k==='missing').length;
+  if(!e&&!so&&!mi)return '';
+  const p=[e?`<b>${e}</b> изтекли`:'',so?`<b>${so}</b> изтичат до месец`:'',mi?`<b>${mi}</b> без дата`:''].filter(Boolean).join(' · ');
+  return `<button class="row docbar ${e||mi?'bad':''}" onclick="go('docs',{f:'alert',from:'home'})"><div class="main"><div class="t">⚠ Документи: ${p}</div><div class="s">Натисни за списъка</div></div><span>→</span></button>`;
+}
+/* във формата за машина */
+function docRow(t,d,on,custom){
+  return `<div class="docrow" data-c="${custom?1:0}">
+    ${custom?`<input class="dname" value="${esc(t)}" placeholder="име на документа, напр. Пропуск за обекта" autocomplete="off">
+      <input type="date" class="ddate" value="${esc(d||'')}" aria-label="${esc(t||'Друго')} — валиден до"><button type="button" class="btn sm" aria-label="Махни" onclick="this.closest('.docrow').remove()">✕</button>`
+      :`<label class="chk"><input type="checkbox" class="dchk" data-t="${esc(t)}" ${on?'checked':''} onchange="this.closest('.docrow').querySelector('.ddate').disabled=!this.checked">${esc(t)}</label>
+      <input type="date" class="ddate" value="${esc(d||'')}" ${on?'':'disabled'} aria-label="${esc(t)} — валиден до">`}</div>`;
+}
+function docsField(m){
+  const have=m?docsOf(m):[],get=t=>have.find(x=>x.t===t&&!x.o);
+  return `<div class="protbox"><div class="phl">Документи — отметни какво има и до кога е валидно</div>
+    <div id="docrows">${DOC_TYPES.map(t=>{const x=get(t);return docRow(t,x&&x.d,!!x,false)}).join('')}
+    ${have.filter(x=>x.o).map(x=>docRow(x.t,x.d,true,true)).join('')}</div>
+    <button type="button" class="btn sm" style="align-self:flex-start" onclick="$('#docrows').insertAdjacentHTML('beforeend',docRow('','',true,true))">+ Друго</button></div>`;
+}
+function readDocs(){
+  const out=[];
+  document.querySelectorAll('#docrows .docrow').forEach(r=>{
+    const d=r.querySelector('.ddate').value;
+    if(r.dataset.c==='1'){const t=r.querySelector('.dname').value.trim();if(t)out.push({t,d,o:1})}
+    else{const c=r.querySelector('.dchk');if(c.checked)out.push({t:c.dataset.t,d})}
+  });
+  return out;
+}
+/* бърза смяна на датата (от досието и от справката) */
+function docEdit(m,x){
+  const key=m.id+'|'+docsOf(m).findIndex(y=>y.t===x.t);     // по номер в списъка — без кавички в имената
+  if(view.edit!==key)return `<button class="btn sm" onclick="view.edit='${key}';render()">Смени датата</button>`;
+  return `<span class="docedit"><input type="date" id="dedit" value="${esc(x.d||'')}"><button class="btn sm pri" onclick="saveDocDate('${m.id}')">Запази</button><button class="btn sm" onclick="view.edit=null;render()">Отказ</button></span>`;
+}
+function saveDocDate(mid){
+  const x=docsOf(M(mid))[+view.edit.split('|')[1]];if(!x)return;
+  const t=x.t,date=$('#dedit').value;
+  act('setDocDate',{mid,t,date},{ok:'Датата е сменена.',then:()=>{view.edit=null;render()}});
+}
+function docsSection(m){
+  const l=docsOf(m);
+  if(!l.length&&!isA())return '';
+  return `<section class="card"><h3>Документи и срокове · ${l.length}</h3>
+    ${l.length?`<div>${l.slice().sort((a,b)=>(a.d||'0')<(b.d||'0')?-1:1).map(x=>{const s=docState(x);return `<div class="dline"><div><b>${esc(x.t)}</b><br><span class="small">${x.d?'валиден до '+fmtIso(x.d):'—'}</span></div>
+      <div class="stack"><span class="chip ${s.cls}">${s.txt}</span>${docEdit(m,x)}</div></div>`}).join('')}</div>`
+      :'<div class="empty">Няма отметнати документи. Отметни ги от „Промени данните“.</div>'}</section>`;
+}
+/* справка */
+function docsView(){
+  const f=view.f||'alert',ty=view.ty||'',cat=view.cat||'',mo=view.mo||monthOpts()[0][0];
+  const sel=(id,cur,opts,on)=>`<select id="${id}" onchange="${on}">${opts.map(([v,l])=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  const next=[...Array(12)].map((_,i)=>{const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+i);return [`${d.getFullYear()}-${pad2(d.getMonth()+1)}`,`${MONTHS[d.getMonth()]} ${d.getFullYear()}`]});
+  const head=`<button class="back" onclick="go('${view.from==='report'?'report':'home'}')">← Назад</button>
+  <section class="card"><h2>Документи и срокове</h2>
+    <label for="dshow">Покажи${sel('dshow',f,[['alert','Изтекли, изтичащи до месец и без дата'],['soon','Изтичат до месец'],['expired','Изтекли'],['missing','Без дата'],['month','Изтичат през месец…'],['all','Всички документи'],['none','Машини без отметнати документи']],"view.f=this.value;view.edit=null;render()")}</label>
+    ${f==='month'?`<label for="dmon">Месец${sel('dmon',mo,next,"view.mo=this.value;render()")}</label>`:''}
+    ${f!=='none'?`<label for="dty">Документ${sel('dty',ty,[['','Всички видове'],...DOC_TYPES.map(t=>[t,t]),['*','Друго']],"view.ty=this.value;render()")}</label>`:''}
+    ${hasVeh()?`<label for="dcat">Категория${sel('dcat',cat,[['','Машини и автомобили'],['машина','Само машини'],['автомобил','Само автомобили']],"view.cat=this.value;render()")}</label>`:''}
+  </section>`;
+  const inCat=m=>!cat||(m.cat||'машина')===cat;
+  if(f==='none'){
+    const ms=db.machines.filter(m=>inCat(m)&&!docsOf(m).length).sort((a,b)=>a.num.localeCompare(b.num));
+    return head+`<section class="card"><div class="toolbar"><h3>Без документи · ${ms.length}</h3>${ms.length?`<button class="btn sm" onclick="docsCsv()">⬇ Свали за Excel</button>`:''}</div>
+      ${ms.length?`<div class="list">${ms.map(mRow).join('')}</div>`:'<div class="okbox">Всички машини имат отметнати документи.</div>'}</section>`;
+  }
+  const rows=docsRows();
+  return head+`<section class="card"><div class="toolbar"><h3>${rows.length} ${rows.length===1?'документ':'документа'}</h3>${rows.length?`<button class="btn sm" onclick="docsCsv()">⬇ Свали за Excel</button>`:''}</div>
+    ${rows.length?`<div>${rows.map(({m,x,s})=>`<div class="dline"><div style="min-width:0"><span class="num">${esc(m.num)}</span> <b>${esc(x.t)}</b>
+        <div class="small muted">${esc(m.type)} ${esc(m.model||'')}${m.plate?' · '+esc(m.plate):''}</div>
+        <div class="small">${x.d?'валиден до <b>'+fmtIso(x.d)+'</b>':'няма въведена дата'}</div></div>
+      <div class="stack"><span class="chip ${s.cls}">${s.txt}</span>${docEdit(m,x)}</div></div>`).join('')}</div>`
+      :'<div class="okbox">Няма документи по този филтър.</div>'}</section>`;
+}
+function docsRows(){
+  const f=view.f||'alert',ty=view.ty||'',cat=view.cat||'',mo=view.mo||monthOpts()[0][0];
+  return allDocs().filter(({m,x,s})=>{
+    if(cat&&(m.cat||'машина')!==cat)return false;
+    if(ty==='*'?!x.o:ty&&(x.o||x.t!==ty))return false;
+    if(f==='alert')return s.k!=='ok';
+    if(f==='month')return x.d&&x.d.slice(0,7)===mo;
+    if(f==='all')return true;
+    return s.k===f;
+  }).sort((a,b)=>(a.x.d||'0000')<(b.x.d||'0000')?-1:(a.x.d||'0000')>(b.x.d||'0000')?1:a.m.num.localeCompare(b.m.num));
+}
+function docsCsv(){
+  const f=view.f||'alert',L=m=>[`="${m.num}"`,m.plate||'',m.vin||'',m.type,m.model||'',m.cat||'машина'];
+  if(f==='none'){
+    downloadCsv([['Вътрешен №','Рег. номер','VIN','Вид','Марка и модел','Категория','Обект'],
+      ...db.machines.filter(m=>(!view.cat||(m.cat||'машина')===view.cat)&&!docsOf(m).length).map(m=>[...L(m),m.location||''])],`bez-dokumenti-${iso()}.csv`);
+    return;
+  }
+  downloadCsv([['Вътрешен №','Рег. номер','VIN','Вид','Марка и модел','Категория','Документ','Валиден до','Остават дни','Състояние'],
+    ...docsRows().map(({m,x,s})=>[...L(m),x.t,x.d?fmtIso(x.d):'',s.n==null?'':s.n,s.txt])],
+    `dokumenti-${f==='month'?(view.mo||''):f}-${iso()}.csv`);
+}
+
 /* ---------- ПРОТОКОЛИ И СНИМКИ ---------- */
 let ph=[],phBusy=0;                                   // снимките на протокола във формата, която е отворена
 const phCache={};
