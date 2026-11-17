@@ -153,6 +153,8 @@ input,select,textarea{min-width:0;max-width:100%}
 .brand{flex-shrink:0}
 .who{flex:1 1 auto}
 @media (max-width:374px){.top .bt{display:none}.top-in{gap:6px}.top button{padding:7px 8px}}
+details.bhist>summary{cursor:pointer;color:var(--muted);font-weight:600;padding:6px 0}
+.bhl{display:flex;flex-direction:column;gap:14px;margin-top:8px}
 .alert{background:var(--bad-soft);color:var(--bad);border-radius:10px;padding:12px 14px;font-weight:600}
 .okbox{background:var(--ok-soft);color:var(--ok);border-radius:10px;padding:14px;font-weight:600}
 .mcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
@@ -483,6 +485,8 @@ function render(){
      : v==='retired'?retiredView()
      : v==='docs'?docsView()
      : isA()&&v==='transferForm'?transferForm()
+     : isA()&&v==='battForm'?battForm()
+     : isA()&&v==='battOff'?battOffForm()
      : isA()&&v==='receiveBack'?receiveBack()
      : homeView();
   }
@@ -815,6 +819,7 @@ function machineView(id){
       ${A?`<button class="btn sm" style="align-self:flex-start" onclick="go('repairForm',{mid:'${id}',rid:'${r.id}'})">Промени</button>`:''}</div>`).join(''):'<div class="empty">Няма записани ремонти.</div>'}</section>
 
   ${docsSection(m)}
+  ${battSection(m,A)}
   ${transfersSection(m,A)}
 
   <section class="card"><h3>Къде е била</h3>
@@ -1353,7 +1358,7 @@ async function addPhotos(inp){
   const files=[...inp.files];inp.value='';
   for(const f of files){
     phBusy++;drawPh();
-    try{const data=await compressPhoto(f);const r=await call('uploadPhoto',{data});ph.push({id:r.id,url:data});['#ferr','#rmerr','#terr','#berr'].forEach(x=>{const e=$(x);if(e&&/снимк/i.test(e.textContent))e.textContent=''})}
+    try{const data=await compressPhoto(f);const r=await call('uploadPhoto',{data});ph.push({id:r.id,url:data});['#ferr','#rmerr','#terr','#berr','#bferr'].forEach(x=>{const e=$(x);if(e&&/снимк/i.test(e.textContent))e.textContent=''})}
     catch(e){toast(e.message==='AUTH'?'Влез отново.':e.message)}
     finally{phBusy--;drawPh()}
   }
@@ -1364,9 +1369,9 @@ function phHtml(){
     +(!ph.length&&!phBusy?'<div class="small muted">Още няма снимка.</div>':'');
 }
 function drawPh(){const e=$('#phs');if(e)e.innerHTML=phHtml()}
-function phField(){
+function phField(lbl){
   return `<div id="phs" class="phs">${phHtml()}</div>
-    <label class="btn phbtn">📷 Снимай / добави страница<input type="file" accept="image/*" multiple hidden onchange="addPhotos(this)"></label>`;
+    <label class="btn phbtn">${lbl||'📷 Снимай / добави страница'}<input type="file" accept="image/*" multiple hidden onchange="addPhotos(this)"></label>`;
 }
 function protCheck(noSel,atSel){
   if(!$(atSel).value)return 'Избери датата на протокола.';
@@ -1463,6 +1468,111 @@ function transfersCsv(){
     return [`="${t.num}"`,m.type||'',m.model||'',t.dir,t.firm,t.protNo,t.protAt?fmtD(t.protAt):'',String(t.photos||'').split(',').filter(String).length,
       t.madeAt?fmt(t.madeAt):'',t.by||'',m.status==='изведена'?'изведена':m.id?'в парка':'изтрита']});
   downloadCsv([['Номер','Вид','Марка и модел','Посока','Фирма','Протокол №','Дата на протокола','Снимки (бр.)','Въведен на','Въвел','Машината сега'],...rows],`protokoli-${iso()}.csv`);
+}
+
+/* ---------- АКУМУЛАТОРИ ----------
+ * Един запис = един монтаж (на камион „Брой: 2“, двете гаранционни карти са снимки в същия запис).
+ * Записва само администраторът; ръководителите гледат в досието. Машинистите не виждат нищо. */
+const battsOf=mid=>(db.batteries||[]).filter(b=>b.machineId===mid);
+const phIds=x=>String(x||'').split(',').filter(String);
+function battEnd(b){if(!b.at||!b.months)return null;const d=new Date(b.at);const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+b.months);
+  d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));return d.getTime()}
+function battWarr(b){
+  const e=battEnd(b);
+  if(!e)return '<span class="chip c-n">гаранция: не е въведена</span>';
+  const t=new Date();t.setHours(0,0,0,0);const left=Math.round((new Date(e).setHours(0,0,0,0)-t)/864e5);
+  if(b.status!=='монтиран')return `<span class="small muted">гаранция до ${fmtD(e)}</span>`;
+  if(left<0)return `<span class="chip c-n">гаранцията изтекла ${fmtD(e)}</span>`;
+  const mo=Math.floor(left/30.4);
+  return `<span class="chip ${left<=60?'c-warn':'c-ok'}">в гаранция до ${fmtD(e)} · още ${left<=60?left+' дни':mo+' мес.'}</span>`;
+}
+const BST={'върнат по гаранция':['c-warn','↩ върнат по гаранция'],'преместен':['c-n','⇄ преместен'],'свален':['c-n','свален']};
+function battRow(b,m,A){
+  const on=b.status==='монтиран',n=phIds(b.photos).length,k='bd'+b.id;
+  return `<div class="ev ${on?'ok':''}">
+    <div class="h">${on?'<span class="chip c-ok">на машината</span>':`<span class="chip ${BST[b.status][0]}">${BST[b.status][1]}</span>`}<span>монтиран ${fmtD(b.at)}</span>${b.qty>1?`<b style="color:var(--ink)">${b.qty} бр.</b>`:''}</div>
+    ${b.brand||b.serial?`<div>${esc(b.brand||'')}${b.serial?` <span class="small muted">· сер. № ${esc(b.serial)}</span>`:''}</div>`:''}
+    <div>${battWarr(b)}</div>
+    ${b.seller?`<div class="small muted">Откъде: ${esc(b.seller)}</div>`:''}
+    ${b.fromNum?`<div class="small muted">Преместен от машина <b style="color:var(--ink)">${esc(b.fromNum)}</b></div>`:''}
+    ${!on?`<div class="small"><b>${b.status==='върнат по гаранция'?'Върнат по гаранция':b.status==='преместен'?'Преместен':'Свален'} на ${b.offAt?fmtD(b.offAt):'—'}</b>${b.note?' · '+esc(b.note):''}</div>`:b.note?`<div class="small muted">${esc(b.note)}</div>`:''}
+    <div class="btns"><button class="btn sm" onclick="showB('${b.id}')">📷 Гаранционна карта (${n})</button>
+      ${A&&on?`<button class="btn sm" onclick="go('battOff',{id:'${b.id}',mode:'гаранция'})">↩ Върнат по гаранция</button>
+        <button class="btn sm" onclick="go('battOff',{id:'${b.id}',mode:'премести'})">⇄ Премести на друга машина</button>
+        <button class="btn sm" onclick="go('battOff',{id:'${b.id}',mode:'свален'})">Свален</button>
+        <button class="btn sm" onclick="go('battForm',{mid:'${m.id}',id:'${b.id}'})">Промени</button>`:''}
+      ${A?(confirmKey===k?`<button class="btn sm danger" onclick="act('delBattery',{id:'${b.id}'},{ok:'Записът е изтрит.'})">Да, изтрий записа</button>`
+        :`<button class="btn sm" onclick="confirmKey='${k}';render()">Изтрий</button>`):''}</div></div>`;
+}
+function battSection(m,A){
+  const l=battsOf(m.id).sort((a,b)=>(b.status==='монтиран')-(a.status==='монтиран')||(b.offAt||b.at||0)-(a.offAt||a.at||0)||(b.madeAt||0)-(a.madeAt||0));
+  if(!l.length&&!A)return '';
+  const on=l.filter(b=>b.status==='монтиран'),old=l.filter(b=>b.status!=='монтиран');
+  return `<section class="card"><div class="toolbar"><h3>🔋 Акумулатори · ${on.reduce((s,b)=>s+(b.qty||1),0)} бр.</h3>${A?`<button class="btn sm" onclick="go('battForm',{mid:'${m.id}'})">+ Нов акумулатор</button>`:''}</div>
+    ${on.length?on.map(b=>battRow(b,m,A)).join(''):'<div class="empty">Няма записан акумулатор на машината.</div>'}
+    ${old.length?`<details class="bhist"><summary>История · ${old.length} ${old.length===1?'стар запис':'стари записа'}</summary><div class="bhl">${old.map(b=>battRow(b,m,A)).join('')}</div></details>`:''}</section>`;
+}
+function showB(bid){
+  const b=(db.batteries||[]).find(x=>x.id===bid);if(!b)return;
+  showPhotos(phIds(b.photos),`${b.num} · акумулатор от ${fmtD(b.at)}${b.brand?' · '+b.brand:''}`);
+}
+function battForm(){
+  const m=M(view.mid);if(!m)return homeView();
+  const b=view.id?(db.batteries||[]).find(x=>x.id===view.id):null;
+  const has=b?phIds(b.photos).length:0;
+  return `<button class="back" onclick="go('machine',{id:'${m.id}'})">← Назад</button>
+  <section class="card"><h2>${b?'Промени акумулатор':'Нов акумулатор'}</h2>
+    <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
+    <div class="pair"><label for="bat2">Дата на монтаж<input id="bat2" type="date" max="${iso()}" value="${b?iso(b.at):iso()}"></label>
+      <label for="bqty">Брой<input id="bqty" type="number" inputmode="numeric" min="1" max="10" value="${b?b.qty||1:1}"></label></div>
+    <label for="bmon">Гаранция (месеца)<input id="bmon" type="number" inputmode="numeric" min="0" max="120" placeholder="напр. 24" value="${b&&b.months!=null?b.months:''}"></label>
+    <div class="btns">${[12,18,24,36].map(n=>`<button type="button" class="btn sm" onclick="$('#bmon').value=${n}">${n} мес.</button>`).join('')}</div>
+    <label for="bbr">Марка / Ah (по желание)<input id="bbr" value="${esc(b?b.brand||'':'')}" placeholder="напр. Varta 180Ah" autocomplete="off"></label>
+    <div class="pair"><label for="bser">Сериен № (по желание)<input id="bser" value="${esc(b?b.serial||'':'')}" autocomplete="off"></label>
+      <label for="bsel">Откъде (по желание)<input id="bsel" value="${esc(b?b.seller||'':'')}" autocomplete="off"></label></div>
+    <div><b>Гаранционна карта</b><div class="small muted">${b?`Вече има ${has} ${has===1?'снимка':'снимки'}. Тук можеш да добавиш още.`:'Снимай всички карти (на камион с 2 акумулатора — и двете), етикета, фактурата — колкото трябва.'}</div></div>
+    ${phField('📷 Снимай гаранционната карта')}
+    <div id="bferr" class="err"></div>
+    <button class="btn pri" onclick="saveBatt()">${b?'Запази промените':'Запиши акумулатора'}</button></section>`;
+}
+function saveBatt(){
+  const e=$('#bferr'),b=view.id?(db.batteries||[]).find(x=>x.id===view.id):null;
+  if(!$('#bat2').value){e.textContent='Избери датата на монтажа.';return}
+  if(phBusy){e.textContent='Изчакай снимките да се качат.';return}
+  if(!ph.length&&!(b&&phIds(b.photos).length)){e.textContent='Снимай гаранционната карта — поне една снимка.';return}
+  const mid=view.mid;
+  act('saveBattery',{id:view.id||'',mid,at:$('#bat2').value,qty:$('#bqty').value,months:$('#bmon').value,brand:$('#bbr').value.trim(),serial:$('#bser').value.trim(),seller:$('#bsel').value.trim(),photos:ph.map(p=>p.id)},
+    {err:'#bferr',ok:b?'Промените са записани.':'Акумулаторът е записан.',then:()=>go('machine',{id:mid})});
+}
+function battOffForm(){
+  const b=(db.batteries||[]).find(x=>x.id===view.id);const m=b&&M(b.machineId);if(!m)return homeView();
+  const mode=view.mode,mv=mode==='премести';
+  const title=mv?'Премести акумулатора':mode==='гаранция'?'Върнат по гаранция':'Акумулаторът е свален';
+  const e=battEnd(b),t0=new Date().setHours(0,0,0,0);
+  return `<button class="back" onclick="go('machine',{id:'${m.id}'})">← Назад</button>
+  <section class="card"><h2>${title}</h2>
+    <div><span class="num">${esc(m.num)}</span> <span class="muted">${esc(m.type)} ${esc(m.model||'')}</span></div>
+    <div class="small">Монтиран ${fmtD(b.at)}${b.qty>1?' · '+b.qty+' бр.':''}${b.brand?' · '+esc(b.brand):''}</div>
+    ${mode==='гаранция'&&e?(e<t0?`<div class="alert">Внимание: гаранцията е изтекла на ${fmtD(e)}.</div>`:`<div class="okbox">В гаранция до ${fmtD(e)}.</div>`):''}
+    ${mv?`<label for="bto">На коя машина (номер)<input id="bto" inputmode="numeric" maxlength="5" autocomplete="off" oninput="bToName()"></label><div id="btoname" class="small muted"></div>
+      <div class="small muted">Гаранцията и снимките отиват с акумулатора. В историята на двете машини се вижда преместването.</div>`:''}
+    <label for="bod">Дата<input id="bod" type="date" max="${iso()}" value="${iso()}"></label>
+    <label for="bnote">Бележка (по желание)<input id="bnote" placeholder="${mv?'напр. разменени заради ремонт':mode==='гаранция'?'напр. не държи заряд, върнат в Авто Плюс':'напр. бракуван'}" autocomplete="off"></label>
+    <div id="boerr" class="err"></div>
+    <button class="btn pri" onclick="battOffGo()">Запиши</button></section>`;
+}
+function bToName(){
+  const n=$('#bto').value.trim(),m=db.machines.find(x=>x.num===n),o=$('#btoname');
+  o.innerHTML=!n?'':m?`→ <b style="color:var(--ink)">${esc(m.num)}</b> ${esc(m.type)} ${esc(m.model||'')}`:n.length>=4?'<span style="color:var(--bad)">Няма машина с този номер.</span>':'';
+}
+function battOffGo(){
+  const b=(db.batteries||[]).find(x=>x.id===view.id);if(!b)return;
+  const e=$('#boerr'),mid=b.machineId,d=$('#bod').value,note=$('#bnote').value.trim();
+  if(!d){e.textContent='Избери датата.';return}
+  if(view.mode==='премести'){
+    const n=$('#bto').value.trim();if(!n){e.textContent='Напиши номера на машината.';return}
+    act('battMove',{id:b.id,toNum:n,date:d,note},{err:'#boerr',ok:`Акумулаторът е преместен на ${n}.`,then:()=>go('machine',{id:mid})});
+  }else act('battOff',{id:b.id,why:view.mode,date:d,note},{err:'#boerr',ok:'Записано.',then:()=>go('machine',{id:mid})});
 }
 
 /* ---------- ИЗВЕДЕНИ ОТ ПАРКА ---------- */
